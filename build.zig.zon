@@ -1,0 +1,14 @@
+.{
+    .name = "physics",
+    .version = "0.0.1",
+
+    .dependencies = .{
+        .zigwin32 = .{
+            .url = "https://github.com/marlersoft/zigwin32/archive/6f9ebf17f42aa7b37f466b195159893ed8eae8fc.tar.gz",
+            .hash = "1220ff2400a1974b2a9dc52cfe5c9c0b2cc87a2e75291ca781dc5b78908afe5af0e8",
+        },
+    },
+    .paths = .{
+        "build.zig",
+    },
+}
