@@ -110,6 +110,8 @@ fn wparamToControl(wParam: win32.WPARAM) ?physics.Control {
         'S' => .backward,
         'A' => .left,
         'D' => .right,
+        'Q' => .turn_left,
+        'E' => .turn_right,
         else => null,
     };
 }

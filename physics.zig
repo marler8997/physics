@@ -4,6 +4,7 @@ const std = @import("std");
 const RenderImage = @import("RenderImage.zig");
 const Rgb = @import("Rgb.zig");
 const XY = @import("xy.zig").XY;
+const zmath = @import("zmathmini.zig");
 
 fn Xyz(comptime T: type) type {
     return struct {
@@ -36,7 +37,8 @@ fn Ratio(comptime T: type) type {
 const Camera = struct {
     // initial position of every ray that is cast
     pos: Xyz(i32),
-    direction: Xyz(i32),
+    yaw: f32,
+    //direction: Xyz(i32),
     // distance from the pos to the screen
     len: i32,
     //planks_per_pixel: Ratio(i32),
@@ -61,7 +63,7 @@ const global = struct {
     }};
     pub var camera = Camera{
         .pos = .{ .x = 0, .y = 0, .z = 0 },
-        .direction = .{ .x = 0, .y = 0, .z = 1 },
+        .yaw = 0,
         .len = 10,
     };
     pub var user_input: struct {
@@ -69,6 +71,8 @@ const global = struct {
         backward: ControlState = .up,
         left: ControlState = .up,
         right: ControlState = .up,
+        turn_left: ControlState = .up,
+        turn_right: ControlState = .up,
     } = .{};
 };
 
@@ -186,6 +190,8 @@ pub const Control = enum {
     backward,
     left,
     right,
+    turn_left, // yaw
+    turn_right, // yaw
 };
 pub const ControlState = enum { up, down };
 pub fn onControl(key: Control, state: ControlState) void {
@@ -195,6 +201,8 @@ pub fn onControl(key: Control, state: ControlState) void {
         .backward => &global.user_input.backward,
         .left => &global.user_input.left,
         .right => &global.user_input.right,
+        .turn_left => &global.user_input.turn_left,
+        .turn_right => &global.user_input.turn_right,
     };
     state_ref.* = state;
 }
@@ -221,6 +229,12 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
         // TODO: move relative to camera direction
         global.camera.pos.x += 1_000;
     }
+    if (global.user_input.turn_left == .down) {
+        global.camera.yaw -= 0.1;
+    }
+    if (global.user_input.turn_right == .down) {
+        global.camera.yaw += 0.1;
+    }
 
     const size_i32: XY(i32) = .{
         .x = @intCast(size.x),
@@ -231,6 +245,8 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
         .y = @divTrunc(size_i32.y, 2),
     };
     const z_dir: i32 = @intCast((@abs(half_size.x) + @abs(half_size.y)) / 2);
+
+    const rotate_quat = zmath.quatFromRollPitchYaw(0, global.camera.yaw, 0);
 
     for (0 .. size.y) |row| {
         for (0 .. size.x) |col| {
@@ -243,9 +259,20 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
                 .y = pixel_pos.y - half_size.y,
                 .z = z_dir,
             };
+            const new_direction_vec = zmath.rotate(rotate_quat, @Vector(4, f32){
+                @floatFromInt(direction.x),
+                @floatFromInt(direction.y),
+                @floatFromInt(direction.z),
+                1,
+            });
+            const new_direction = Xyz(i32){
+                .x = @intFromFloat(new_direction_vec[0]),
+                .y = @intFromFloat(new_direction_vec[1]),
+                .z = @intFromFloat(new_direction_vec[2]),
+            };
             image.setPixel(
                 col, row,
-                raycast(global.camera.pos, direction),
+                raycast(global.camera.pos, new_direction),
             );
         }
     }
