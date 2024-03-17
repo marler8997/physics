@@ -63,6 +63,7 @@ const Sphere = struct {
     center: [3]Unit,
     radius: Unit,
     rgb: Rgb,
+    is_light_source: bool,
 };
 
 const ground_radius = 2_000_000;
@@ -74,18 +75,22 @@ const global = struct {
         .center = .{ 0, -ground_radius, 0 },
         .radius = ground_radius,
         .rgb = .{ .r = 102, .g = 51, .b = 0 },
+        .is_light_source = false,
     }, .{
         .center = .{  0, 0, 40_000 },
         .radius = 5_000,
         .rgb = .{ .r = 255, .g = 0, .b = 0 },
+        .is_light_source = false,
     }, .{
-        .center = .{ 20_000, 50_000, 50_000 },
-        .radius = 20_000,
-        .rgb = .{ .r = 255, .g = 255, .b = 0 },
+        .center = .{ 20_000, 150_000, 50_000 },
+        .radius = 120_000,
+        .rgb = .{ .r = 255, .g = 255, .b = 255 },
+        .is_light_source = true,
     }, .{
         .center = .{ -14_000, 4_000, 50_000 },
         .radius = 3_000,
         .rgb = .{ .r = 255, .g = 0, .b = 255 },
+        .is_light_source = false,
     }};
     pub var camera = Camera{
         .pos = .{ 0, 1_000, 0 },
@@ -202,35 +207,94 @@ test "line intersects sphere " {
     );
 }
 
-fn raycast(pos: [3]Unit, dir: [3]Unit) Rgb {
+fn calcNormal(comptime Float: type, v: [3]Unit) [3]Float {
+    const length: f32 = std.math.sqrt(
+        (v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2])
+    );
+    return [3]Float{
+        floatFromUnit(Float, v[0]) / length,
+        floatFromUnit(Float, v[1]) / length,
+        floatFromUnit(Float, v[2]) / length,
+    };
+}
+
+fn filterColor(color: Rgb, light: Rgb) Rgb {
+    return .{
+        .r = @intFromFloat(@round(@as(f32, @floatFromInt(color.r)) * (@as(f32, @floatFromInt(light.r)) / 255.0))),
+        .g = @intFromFloat(@round(@as(f32, @floatFromInt(color.g)) * (@as(f32, @floatFromInt(light.g)) / 255.0))),
+        .b = @intFromFloat(@round(@as(f32, @floatFromInt(color.b)) * (@as(f32, @floatFromInt(light.b)) / 255.0))),
+    };
+}
+
+fn getReflectDir(dir: [3]Unit, normal: [3]f32) [3]Unit {
+    const scale = 2 * (
+        floatFromUnit(f32, dir[0]) * normal[0] +
+        floatFromUnit(f32, dir[1]) * normal[1] +
+        floatFromUnit(f32, dir[2]) * normal[2]
+    );
+    return .{
+        unitCast(floatFromUnit(f32, dir[0]) - scale * normal[0]),
+        unitCast(floatFromUnit(f32, dir[1]) - scale * normal[1]),
+        unitCast(floatFromUnit(f32, dir[2]) - scale * normal[2]),
+    };
+}
+
+fn raycast(pos: [3]Unit, dir: [3]Unit, depth: u32, maybe_exclude: ?*Sphere) ?Rgb {
     {
-        var maybe_min: ?struct {
-            rgb: Rgb,
-            val: Unit,
+        var maybe_closest: ?struct {
+            sphere: *Sphere,
+            dist: Unit,
         } = null;
-        for (global.spheres) |sphere| {
-            const points = intersectsSphere(
-                pos,
-                dir,
+        for (&global.spheres) |*sphere| {
+            if (maybe_exclude) |exclude| {
+                if (sphere == exclude) continue;
+            }
+
+            const distances = intersectsSphere(
+                pos, dir,
                 sphere.center,
                 sphere.radius,
             );
-            for (points) |pt| {
-                if (pt >= 0) {
-                    const new_min = if (maybe_min) |min| pt < min.val else true;
+            for (distances) |dist| {
+                if (dist >= 0) {
+                    const new_min = if (maybe_closest) |min| dist < min.dist else true;
                     if (new_min) {
-                        maybe_min = .{ .rgb = sphere.rgb, .val = pt };
+                        maybe_closest = .{ .sphere = sphere, .dist = dist };
                     }
                 }
             }
         }
-        if (maybe_min) |min| return min.rgb;
+
+        if (maybe_closest) |closest| {
+            if (!global.raytrace)
+                return closest.sphere.rgb;
+            if (closest.sphere.is_light_source)
+                return closest.sphere.rgb;
+
+            const max_depth = 6;
+            if (depth >= max_depth) {
+                @panic("TODO: max depth!");
+                //return null;
+            }
+
+            const normal = calcNormal(f32, dir);
+            const new_pos: [3]Unit = .{
+                pos[0] + unitCast(normal[0] * floatFromUnit(f32, closest.dist)),
+                pos[1] + unitCast(normal[1] * floatFromUnit(f32, closest.dist)),
+                pos[2] + unitCast(normal[2] * floatFromUnit(f32, closest.dist)),
+            };
+            const reflect_normal = calcNormal(f32, .{
+                new_pos[0] - closest.sphere.center[0],
+                new_pos[1] - closest.sphere.center[1],
+                new_pos[2] - closest.sphere.center[2],
+            });
+            const new_dir = getReflectDir(dir, reflect_normal);
+            const light = raycast(new_pos, new_dir, depth + 1, closest.sphere) orelse return null;
+            return filterColor(closest.sphere.rgb, light);
+        }
     }
 
-    if (global.raytrace) {
-        return .{ .r = 0, .g = 0, .b = 0 };
-    }
-    return .{ .r = 0, .g = 255, .b = 255 };
+    return null;
 }
 
 pub const Control = enum {
@@ -322,10 +386,11 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
                 unitCast(new_direction_vec[1]),
                 unitCast(new_direction_vec[2]),
             };
-            image.setPixel(
-                col, row,
-                raycast(global.camera.pos, new_direction),
-            );
+            const ray: Rgb = raycast(global.camera.pos, new_direction, 0, null) orelse (
+                if (global.raytrace) .{ .r = 0, .g = 0, .b = 0 }
+                else .{ .r = 0, .g = 255, .b = 255 }
+             );
+            image.setPixel(col, row, ray);
         }
     }
 }
