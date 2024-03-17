@@ -55,6 +55,8 @@ fn toColorRef(rgb: Rgb) u32 {
 const TIMER_TICK = 1;
 
 pub fn main() !void {
+    physics.init();
+
     const CLASS_NAME = L("Window");
     const wc = win32.WNDCLASSEXW{
         .cbSize = @sizeOf(win32.WNDCLASSEXW),

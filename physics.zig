@@ -62,6 +62,8 @@ const Camera = struct {
 const Sphere = struct {
     center: [3]Unit,
     radius: Unit,
+    velocity: [3]Unit,
+    mass: f32,
     rgb: Rgb,
     is_light_source: bool,
 };
@@ -73,28 +75,37 @@ const ground_radius = switch (@typeInfo(Unit)) {
 };
 
 // 3 spheres
+const max_sphere_count = 20;
 const global = struct {
     pub var raytrace: bool = false;
     pub var spheres = [_]Sphere{.{
-        .center = .{ 0, -ground_radius, 0 },
-        .radius = ground_radius,
-        .rgb = .{ .r = 102, .g = 51, .b = 0 },
+        .center = .{  0, 10_000, 40_000 },
+        .radius = 5_000,
+        .velocity = .{ 0, 0, 0 },
+        .mass = 1,
+        .rgb = .{ .r = 255, .g = 0, .b = 0 },
         .is_light_source = false,
     }, .{
-        .center = .{  0, 0, 40_000 },
-        .radius = 5_000,
-        .rgb = .{ .r = 255, .g = 0, .b = 0 },
+        .center = .{ -14_000, 15_000, 50_000 },
+        .radius = 3_000,
+        .velocity = .{ 0, 0, 0 },
+        .mass = 1,
+        .rgb = .{ .r = 255, .g = 0, .b = 255 },
+        .is_light_source = false,
+    }, .{
+        .center = .{ 0, -ground_radius, 0 },
+        .radius = ground_radius,
+        .velocity = .{ 0, 0, 0 },
+        .mass = 100_000_000_000,
+        .rgb = .{ .r = 102, .g = 51, .b = 0 },
         .is_light_source = false,
     }, .{
         .center = .{ 20_000, 150_000, 50_000 },
         .radius = 120_000,
+        .velocity = .{ 0, 0, 0 },
+        .mass = 1000.0,
         .rgb = .{ .r = 255, .g = 255, .b = 255 },
         .is_light_source = true,
-    }, .{
-        .center = .{ -14_000, 4_000, 50_000 },
-        .radius = 3_000,
-        .rgb = .{ .r = 255, .g = 0, .b = 255 },
-        .is_light_source = false,
     }};
     pub var camera = Camera{
         .pos = .{ 0, 1_000, 0 },
@@ -211,14 +222,26 @@ test "line intersects sphere " {
     );
 }
 
+fn calcMagnitude3d(comptime Float: type, v: [3]Unit) Float {
+    return @sqrt(
+        floatFromUnit(Float, (v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]))
+    );
+}
+
+fn calcDistance3d(comptime Float: type, a: [3]Unit, b: [3]Unit) Float {
+    return calcMagnitude3d(Float, .{
+        a[0] - b[0],
+        a[1] - b[1],
+        a[2] - b[2],
+    });
+}
+
 fn calcNormal(comptime Float: type, v: [3]Unit) [3]Float {
-    const length = std.math.sqrt(floatFromUnit(f32,
-        (v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2])
-    ));
+    const magnitude = calcMagnitude3d(Float, v);
     return [3]Float{
-        floatFromUnit(Float, v[0]) / length,
-        floatFromUnit(Float, v[1]) / length,
-        floatFromUnit(Float, v[2]) / length,
+        floatFromUnit(Float, v[0]) / magnitude,
+        floatFromUnit(Float, v[1]) / magnitude,
+        floatFromUnit(Float, v[2]) / magnitude,
     };
 }
 
@@ -333,6 +356,105 @@ pub fn onControlEvent(event: ControlEvent) void {
     }
 }
 
+fn enforceNoOverlap() void {
+    for (&global.spheres, 0..) |*sphere, i| {
+        for (global.spheres[i + 1..]) |other_sphere| {
+            const dist_vector = [3]Unit {
+                sphere.center[0] - other_sphere.center[0],
+                sphere.center[1] - other_sphere.center[1],
+                sphere.center[2] - other_sphere.center[2],
+            };
+            const dist = calcMagnitude3d(f64, dist_vector);
+            const min_dist = sphere.radius + other_sphere.radius;
+            if (dist < min_dist)
+                std.debug.panic("two spheres are overlapping!", .{});
+        }
+    }
+}
+
+pub fn init() void {
+    enforceNoOverlap();
+}
+
+const gravity_constant = 10_000_000;
+
+fn applyGravity() void {
+    for (&global.spheres, 0..) |*sphere, first_sphere_index| {
+        for (global.spheres[first_sphere_index + 1..]) |*other_sphere| {
+            const dist_vector = [3]Unit {
+                sphere.center[0] - other_sphere.center[0],
+                sphere.center[1] - other_sphere.center[1],
+                sphere.center[2] - other_sphere.center[2],
+            };
+            const dist_magnitude = calcMagnitude3d(f64, dist_vector);
+            const dist_vector_normalized = [3]f64{
+                floatFromUnit(f64, dist_vector[0]) / dist_magnitude,
+                floatFromUnit(f64, dist_vector[1]) / dist_magnitude,
+                floatFromUnit(f64, dist_vector[2]) / dist_magnitude,
+            };
+            //const force = gravity_constant * sphere.mass * other_sphere.mass / (dist_magnitude * dist_magnitude);
+            //std.log.info("force {}", .{force});
+            const dist_mult: f64 = gravity_constant / (dist_magnitude * dist_magnitude);
+            const parts = [3]f64{
+                dist_vector_normalized[0] * dist_mult,
+                dist_vector_normalized[1] * dist_mult,
+                dist_vector_normalized[2] * dist_mult,
+            };
+            sphere.velocity[0] -= unitCast(parts[0] * other_sphere.mass / sphere.mass);
+            sphere.velocity[1] -= unitCast(parts[1] * other_sphere.mass / sphere.mass);
+            sphere.velocity[2] -= unitCast(parts[2] * other_sphere.mass / sphere.mass);
+            other_sphere.velocity[0] += unitCast(parts[0] * sphere.mass / other_sphere.mass);
+            other_sphere.velocity[1] += unitCast(parts[1] * sphere.mass / other_sphere.mass);
+            other_sphere.velocity[2] += unitCast(parts[2] * sphere.mass / other_sphere.mass);
+        }
+    }
+}
+fn move() void {
+    var new_centers: [max_sphere_count][3]Unit = undefined;
+
+    for (&global.spheres, 0..) |*sphere, i| {
+        new_centers[i] = [3]Unit {
+            sphere.center[0] + sphere.velocity[0],
+            sphere.center[1] + sphere.velocity[1],
+            sphere.center[2] + sphere.velocity[2],
+        };
+    }
+
+    var pass: u32 = 0;
+    while (true) : (pass += 1) {
+        var collisions_resolved: u32 = 0;
+        for (&global.spheres, 0..) |*sphere, i| {
+            for (global.spheres[i + 1..], i + 1..) |*other_sphere, j| {
+                const dist_vector = [3]Unit {
+                    new_centers[i][0] - new_centers[j][0],
+                    new_centers[i][1] - new_centers[j][1],
+                    new_centers[i][2] - new_centers[j][2],
+                };
+                const dist = calcMagnitude3d(f64, dist_vector);
+                const min_dist = sphere.radius + other_sphere.radius;
+                if (dist < min_dist) {
+                    collisions_resolved += 1;
+                    // TODO: adjust velocity/etc better :)
+                    sphere.velocity[0] = 0;
+                    sphere.velocity[1] = 0;
+                    sphere.velocity[2] = 0;
+                    // TODO: move both spheres close toward their current
+                    //       location rather than just snapping back to
+                    //       their original location
+                    new_centers[i] = sphere.center;
+                    new_centers[j] = other_sphere.center;
+                }
+            }
+        }
+        if (collisions_resolved == 0) break;
+    }
+
+    for (&global.spheres, 0..) |*sphere, i| {
+        sphere.center = new_centers[i];
+    }
+    enforceNoOverlap();
+}
+
 fn moveCamera(rotate_quat: zmath.Quat, vec: @Vector(4, f32)) void {
     const new_direction_vec = zmath.rotate(rotate_quat, vec);
     global.camera.pos[0] += unitCast(@round(new_direction_vec[0]));
@@ -341,6 +463,9 @@ fn moveCamera(rotate_quat: zmath.Quat, vec: @Vector(4, f32)) void {
 }
 
 pub fn render(image: RenderImage, size: XY(usize)) void {
+    applyGravity();
+    move();
+
     const rotate_quat = zmath.quatFromRollPitchYaw(0, global.camera.yaw, 0);
 
     if (global.user_input.forward == .down) {
