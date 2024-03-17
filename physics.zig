@@ -50,15 +50,21 @@ const Sphere = struct {
     rgb: Rgb,
 };
 
+const ground_radius = 2_000_000;
+
 // 3 spheres
 const global = struct {
     pub var spheres = [_]Sphere{.{
+        .center = .{ .x =  0, .y = -ground_radius, .z = 0 },
+        .radius = ground_radius,
+        .rgb = .{ .r = 102, .g = 51, .b = 0 },
+    }, .{
         .center = .{ .x =  0, .y = 0, .z = 40_000 },
-        .radius = 10_000,
+        .radius = 5_000,
         .rgb = .{ .r = 255, .g = 0, .b = 0 },
     }, .{
-        .center = .{ .x = 20_000, .y = 20_000, .z = 50_000 },
-        .radius = 10_000,
+        .center = .{ .x = 20_000, .y = 50_000, .z = 50_000 },
+        .radius = 20_000,
         .rgb = .{ .r = 255, .g = 255, .b = 0 },
     }, .{
         .center = .{ .x = -14_000, .y = 4_000, .z = 50_000 },
@@ -66,7 +72,7 @@ const global = struct {
         .rgb = .{ .r = 255, .g = 0, .b = 255 },
     }};
     pub var camera = Camera{
-        .pos = .{ .x = 0, .y = 0, .z = 0 },
+        .pos = .{ .x = 0, .y = 1_000, .z = 0 },
         .yaw = 0,
         .len = 10,
     };
@@ -180,7 +186,6 @@ test "line intersects sphere " {
     );
 }
 
-
 fn raycast(pos: Xyz(i32), dir: Xyz(i32)) Rgb {
     {
         var maybe_min: ?struct {
@@ -206,17 +211,7 @@ fn raycast(pos: Xyz(i32), dir: Xyz(i32)) Rgb {
         if (maybe_min) |min| return min.rgb;
     }
 
-    if (dir.x <= 0) {
-        return if (dir.y <= 0)
-            .{ .r = 0, .g = 0, .b = 0 }
-        else
-            .{ .r = 0, .g = 0, .b = 255 };
-    } else {
-        return if (dir.y <= 0)
-            .{ .r = 0, .g = 255, .b = 0 }
-        else
-            .{ .r = 0, .g = 255, .b = 255 };
-    }
+    return .{ .r = 0, .g = 255, .b = 255 };
 }
 
 pub const Control = enum {

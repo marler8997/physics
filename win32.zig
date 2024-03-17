@@ -211,7 +211,7 @@ fn paint(hwnd: HWND) void {
             .bmiHeader = .{
                 .biSize = @sizeOf(win32.BITMAPINFOHEADER),
                 .biWidth = client_size_i32.x,
-                .biHeight = -client_size_i32.y,
+                .biHeight = client_size_i32.y,
                 .biPlanes = 1,
                 .biBitCount = 32,
                 .biCompression = win32.BI_RGB,
