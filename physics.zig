@@ -208,8 +208,6 @@ pub fn onControl(key: Control, state: ControlState) void {
 }
 
 
-var render_state: u8 = 0;
-
 fn moveCamera(rotate_quat: zmath.Quat, vec: @Vector(4, f32)) void {
     const new_direction_vec = zmath.rotate(rotate_quat, vec);
     global.camera.pos.x += @intFromFloat(@round(new_direction_vec[0]));
@@ -218,8 +216,6 @@ fn moveCamera(rotate_quat: zmath.Quat, vec: @Vector(4, f32)) void {
 }
 
 pub fn render(image: RenderImage, size: XY(usize)) void {
-    render_state +%= 1;
-
     const rotate_quat = zmath.quatFromRollPitchYaw(0, global.camera.yaw, 0);
 
     if (global.user_input.forward == .down) {

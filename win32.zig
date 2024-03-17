@@ -5,6 +5,7 @@ const win32 = struct {
     usingnamespace @import("win32").zig;
     usingnamespace @import("win32").foundation;
     usingnamespace @import("win32").system.library_loader;
+    usingnamespace @import("win32").ui.input.keyboard_and_mouse;
     usingnamespace @import("win32").ui.windows_and_messaging;
     usingnamespace @import("win32").graphics.gdi;
 };
@@ -104,14 +105,16 @@ pub fn main() !void {
     }
 }
 
-fn wparamToControl(wParam: win32.WPARAM) ?physics.Control {
+fn vkeyToControl(wParam: win32.VIRTUAL_KEY) ?physics.Control {
     return switch (wParam) {
-        'W' => .forward,
-        'S' => .backward,
-        'A' => .left,
-        'D' => .right,
-        'Q' => .turn_left,
-        'E' => .turn_right,
+        .LEFT => .turn_left,
+        //.UP =>
+        .RIGHT => .turn_right,
+        // .DOWN =>
+        @as(win32.VIRTUAL_KEY, @enumFromInt('W')) => .forward,
+        @as(win32.VIRTUAL_KEY, @enumFromInt('S')) => .backward,
+        @as(win32.VIRTUAL_KEY, @enumFromInt('A')) => .left,
+        @as(win32.VIRTUAL_KEY, @enumFromInt('D')) => .right,
         else => null,
     };
 }
@@ -124,12 +127,12 @@ fn WindowProc(
 ) callconv(std.os.windows.WINAPI) win32.LRESULT {
     switch (uMsg) {
         win32.WM_KEYDOWN => {
-            if (wparamToControl(wParam)) |control| {
+            if (vkeyToControl(@enumFromInt(wParam))) |control| {
                 physics.onControl(control, .down);
             }
         },
         win32.WM_KEYUP => {
-            if (wparamToControl(wParam)) |control| {
+            if (vkeyToControl(@enumFromInt(wParam))) |control| {
                 physics.onControl(control, .up);
             }
         },
