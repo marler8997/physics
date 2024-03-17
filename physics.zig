@@ -77,6 +77,7 @@ const ground_radius = 2_000_000;
 
 // 3 spheres
 const global = struct {
+    pub var raytrace: bool = false;
     pub var spheres = [_]Sphere{.{
         .center = .{ .x =  0, .y = -ground_radius, .z = 0 },
         .radius = ground_radius,
@@ -234,6 +235,9 @@ fn raycast(pos: Xyz(Unit), dir: Xyz(Unit)) Rgb {
         if (maybe_min) |min| return min.rgb;
     }
 
+    if (global.raytrace) {
+        return .{ .r = 0, .g = 0, .b = 0 };
+    }
     return .{ .r = 0, .g = 255, .b = 255 };
 }
 
@@ -246,9 +250,9 @@ pub const Control = enum {
     turn_right, // yaw
 };
 pub const ControlState = enum { up, down };
-pub fn onControl(key: Control, state: ControlState) void {
-    std.log.info("key {s}: {s}", .{@tagName(key), @tagName(state)});
-    const state_ref: *ControlState = switch (key) {
+pub fn onControl(control: Control, state: ControlState) void {
+    std.log.info("control {s}: {s}", .{@tagName(control), @tagName(state)});
+    const state_ref: *ControlState = switch (control) {
         .forward => &global.user_input.forward,
         .backward => &global.user_input.backward,
         .left => &global.user_input.left,
@@ -259,6 +263,15 @@ pub fn onControl(key: Control, state: ControlState) void {
     state_ref.* = state;
 }
 
+pub const ControlEvent = enum {
+    toggle_raytrace,
+};
+pub fn onControlEvent(event: ControlEvent) void {
+    std.log.info("control event {s}", .{@tagName(event)});
+    switch (event) {
+        .toggle_raytrace => global.raytrace = !global.raytrace,
+    }
+}
 
 fn moveCamera(rotate_quat: zmath.Quat, vec: @Vector(4, f32)) void {
     const new_direction_vec = zmath.rotate(rotate_quat, vec);

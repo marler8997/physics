@@ -118,6 +118,12 @@ fn vkeyToControl(wParam: win32.VIRTUAL_KEY) ?physics.Control {
         else => null,
     };
 }
+fn vkeyToControlEvent(wParam: win32.VIRTUAL_KEY) ?physics.ControlEvent {
+    return switch (wParam) {
+        @as(win32.VIRTUAL_KEY, @enumFromInt('R')) => .toggle_raytrace,
+        else => null,
+    };
+}
 
 fn WindowProc(
     hwnd: HWND,
@@ -126,15 +132,15 @@ fn WindowProc(
     lParam: win32.LPARAM,
 ) callconv(std.os.windows.WINAPI) win32.LRESULT {
     switch (uMsg) {
-        win32.WM_KEYDOWN => {
-            if (vkeyToControl(@enumFromInt(wParam))) |control| {
-                physics.onControl(control, .down);
-            }
+        win32.WM_KEYDOWN => if (wParam == @intFromEnum(win32.VIRTUAL_KEY.ESCAPE)) {
+            win32.PostQuitMessage(0);
+        } else if (vkeyToControl(@enumFromInt(wParam))) |control| {
+            physics.onControl(control, .down);
+        } else if (vkeyToControlEvent(@enumFromInt(wParam))) |event| {
+            physics.onControlEvent(event);
         },
-        win32.WM_KEYUP => {
-            if (vkeyToControl(@enumFromInt(wParam))) |control| {
-                physics.onControl(control, .up);
-            }
+        win32.WM_KEYUP => if (vkeyToControl(@enumFromInt(wParam))) |control| {
+            physics.onControl(control, .up);
         },
         win32.WM_TIMER => {
             if (wParam != TIMER_TICK)
