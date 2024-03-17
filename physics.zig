@@ -383,7 +383,7 @@ fn enforceNoOverlap() void {
                 sphere.center[2] - other_sphere.center[2],
             };
             const dist = calcMagnitude3d(f64, dist_vector);
-            const min_dist = sphere.radius + other_sphere.radius;
+            const min_dist = floatFromUnit(f64, sphere.radius + other_sphere.radius);
             if (dist < min_dist)
                 std.debug.panic("two spheres are overlapping!", .{});
         }
@@ -449,7 +449,7 @@ fn move() void {
                     new_centers[i][2] - new_centers[j][2],
                 };
                 const dist = calcMagnitude3d(f64, dist_vector);
-                const min_dist = sphere.radius + other_sphere.radius;
+                const min_dist = floatFromUnit(f64, sphere.radius + other_sphere.radius);
                 if (dist < min_dist) {
                     collisions_resolved += 1;
                     // TODO: adjust velocity/etc better :)
