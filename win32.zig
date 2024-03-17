@@ -122,6 +122,8 @@ fn vkeyToControl(wParam: win32.VIRTUAL_KEY) ?physics.Control {
 }
 fn vkeyToControlEvent(wParam: win32.VIRTUAL_KEY) ?physics.ControlEvent {
     return switch (wParam) {
+        .UP => .speed_up,
+        .DOWN => .speed_down,
         @as(win32.VIRTUAL_KEY, @enumFromInt('R')) => .toggle_raytrace,
         else => null,
     };

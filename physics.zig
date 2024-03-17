@@ -76,8 +76,10 @@ const ground_radius = switch (@typeInfo(Unit)) {
 
 // 3 spheres
 const max_sphere_count = 20;
+const max_user_speed = 30;
 const global = struct {
     pub var raytrace: bool = false;
+    pub var user_speed: u8 = 10;
     pub var spheres = [_]Sphere{.{
         .center = .{  0, 10_000, 40_000 },
         .radius = 5_000,
@@ -347,12 +349,28 @@ pub fn onControl(control: Control, state: ControlState) void {
 }
 
 pub const ControlEvent = enum {
+    speed_up,
+    speed_down,
     toggle_raytrace,
 };
 pub fn onControlEvent(event: ControlEvent) void {
-    std.log.info("control event {s}", .{@tagName(event)});
     switch (event) {
-        .toggle_raytrace => global.raytrace = !global.raytrace,
+        .speed_up => {
+            if (global.user_speed < max_user_speed) {
+                global.user_speed += 1;
+                std.log.info("user_speed = {}", .{global.user_speed});
+            }
+        },
+        .speed_down => {
+            if (global.user_speed > 0) {
+                global.user_speed -= 1;
+                std.log.info("user_speed = {}", .{global.user_speed});
+            }
+        },
+        .toggle_raytrace => {
+            global.raytrace = !global.raytrace;
+            std.log.info("raytrace = {}", .{global.raytrace});
+        },
     }
 }
 
@@ -468,17 +486,18 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
 
     const rotate_quat = zmath.quatFromRollPitchYaw(0, global.camera.yaw, 0);
 
+    const user_speed: f32 = std.math.pow(f32, 2, @floatFromInt(global.user_speed));
     if (global.user_input.forward == .down) {
-        moveCamera(rotate_quat, @Vector(4, f32){ 0, 0, 1_000, 1});
+        moveCamera(rotate_quat, @Vector(4, f32){ 0, 0, user_speed, 1});
     }
     if (global.user_input.backward == .down) {
-        moveCamera(rotate_quat, @Vector(4, f32){ 0, 0, -1_000, 1});
+        moveCamera(rotate_quat, @Vector(4, f32){ 0, 0, -user_speed, 1});
     }
     if (global.user_input.left == .down) {
-        moveCamera(rotate_quat, @Vector(4, f32){ -1_000, 0, 0, 1});
+        moveCamera(rotate_quat, @Vector(4, f32){ -user_speed, 0, 0, 1});
     }
     if (global.user_input.right == .down) {
-        moveCamera(rotate_quat, @Vector(4, f32){ 1_000, 0, 0, 1});
+        moveCamera(rotate_quat, @Vector(4, f32){ user_speed, 0, 0, 1});
     }
     if (global.user_input.turn_left == .down) {
         global.camera.yaw -= 0.1;
