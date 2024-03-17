@@ -210,24 +210,29 @@ pub fn onControl(key: Control, state: ControlState) void {
 
 var render_state: u8 = 0;
 
+fn moveCamera(rotate_quat: zmath.Quat, vec: @Vector(4, f32)) void {
+    const new_direction_vec = zmath.rotate(rotate_quat, vec);
+    global.camera.pos.x += @intFromFloat(@round(new_direction_vec[0]));
+    global.camera.pos.y += @intFromFloat(@round(new_direction_vec[1]));
+    global.camera.pos.z += @intFromFloat(@round(new_direction_vec[2]));
+}
+
 pub fn render(image: RenderImage, size: XY(usize)) void {
     render_state +%= 1;
 
+    const rotate_quat = zmath.quatFromRollPitchYaw(0, global.camera.yaw, 0);
+
     if (global.user_input.forward == .down) {
-        // TODO: move relative to camera direction
-        global.camera.pos.z += 1_000;
+        moveCamera(rotate_quat, @Vector(4, f32){ 0, 0, 1_000, 1});
     }
     if (global.user_input.backward == .down) {
-        // TODO: move relative to camera direction
-        global.camera.pos.z -= 1_000;
+        moveCamera(rotate_quat, @Vector(4, f32){ 0, 0, -1_000, 1});
     }
     if (global.user_input.left == .down) {
-        // TODO: move relative to camera direction
-        global.camera.pos.x -= 1_000;
+        moveCamera(rotate_quat, @Vector(4, f32){ -1_000, 0, 0, 1});
     }
     if (global.user_input.right == .down) {
-        // TODO: move relative to camera direction
-        global.camera.pos.x += 1_000;
+        moveCamera(rotate_quat, @Vector(4, f32){ 1_000, 0, 0, 1});
     }
     if (global.user_input.turn_left == .down) {
         global.camera.yaw -= 0.1;
@@ -245,8 +250,6 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
         .y = @divTrunc(size_i32.y, 2),
     };
     const z_dir: i32 = @intCast((@abs(half_size.x) + @abs(half_size.y)) / 2);
-
-    const rotate_quat = zmath.quatFromRollPitchYaw(0, global.camera.yaw, 0);
 
     for (0 .. size.y) |row| {
         for (0 .. size.x) |col| {
