@@ -6,14 +6,6 @@ const Rgb = @import("Rgb.zig");
 const XY = @import("xy.zig").XY;
 const zmath = @import("zmathmini.zig");
 
-fn Xyz(comptime T: type) type {
-    return struct {
-        x: T,
-        y: T,
-        z: T,
-    };
-}
-
 // A World Unit
 //const Unit = i64;
 const Unit = f32;
@@ -59,16 +51,16 @@ fn floatFromUnit(comptime Float: type, unit: Unit) Float {
 //
 const Camera = struct {
     // initial position of every ray that is cast
-    pos: Xyz(Unit),
+    pos: [3]Unit,
     yaw: f32,
-    //direction: Xyz(Unit),
+    //direction: [3]Unit,
     // distance from the pos to the screen
     len: Unit,
     //planks_per_pixel: Ratio(Unit),
 };
 
 const Sphere = struct {
-    center: Xyz(Unit),
+    center: [3]Unit,
     radius: Unit,
     rgb: Rgb,
 };
@@ -79,24 +71,24 @@ const ground_radius = 2_000_000;
 const global = struct {
     pub var raytrace: bool = false;
     pub var spheres = [_]Sphere{.{
-        .center = .{ .x =  0, .y = -ground_radius, .z = 0 },
+        .center = .{ 0, -ground_radius, 0 },
         .radius = ground_radius,
         .rgb = .{ .r = 102, .g = 51, .b = 0 },
     }, .{
-        .center = .{ .x =  0, .y = 0, .z = 40_000 },
+        .center = .{  0, 0, 40_000 },
         .radius = 5_000,
         .rgb = .{ .r = 255, .g = 0, .b = 0 },
     }, .{
-        .center = .{ .x = 20_000, .y = 50_000, .z = 50_000 },
+        .center = .{ 20_000, 50_000, 50_000 },
         .radius = 20_000,
         .rgb = .{ .r = 255, .g = 255, .b = 0 },
     }, .{
-        .center = .{ .x = -14_000, .y = 4_000, .z = 50_000 },
+        .center = .{ -14_000, 4_000, 50_000 },
         .radius = 3_000,
         .rgb = .{ .r = 255, .g = 0, .b = 255 },
     }};
     pub var camera = Camera{
-        .pos = .{ .x = 0, .y = 1_000, .z = 0 },
+        .pos = .{ 0, 1_000, 0 },
         .yaw = 0,
         .len = 10,
     };
@@ -210,7 +202,7 @@ test "line intersects sphere " {
     );
 }
 
-fn raycast(pos: Xyz(Unit), dir: Xyz(Unit)) Rgb {
+fn raycast(pos: [3]Unit, dir: [3]Unit) Rgb {
     {
         var maybe_min: ?struct {
             rgb: Rgb,
@@ -218,9 +210,9 @@ fn raycast(pos: Xyz(Unit), dir: Xyz(Unit)) Rgb {
         } = null;
         for (global.spheres) |sphere| {
             const points = intersectsSphere(
-                [3]Unit{ pos.x, pos.y, pos.z },
-                [3]Unit{ dir.x, dir.y, dir.z },
-                [3]Unit{ sphere.center.x, sphere.center.y, sphere.center.z },
+                pos,
+                dir,
+                sphere.center,
                 sphere.radius,
             );
             for (points) |pt| {
@@ -275,9 +267,9 @@ pub fn onControlEvent(event: ControlEvent) void {
 
 fn moveCamera(rotate_quat: zmath.Quat, vec: @Vector(4, f32)) void {
     const new_direction_vec = zmath.rotate(rotate_quat, vec);
-    global.camera.pos.x += unitCast(@round(new_direction_vec[0]));
-    global.camera.pos.y += unitCast(@round(new_direction_vec[1]));
-    global.camera.pos.z += unitCast(@round(new_direction_vec[2]));
+    global.camera.pos[0] += unitCast(@round(new_direction_vec[0]));
+    global.camera.pos[1] += unitCast(@round(new_direction_vec[1]));
+    global.camera.pos[2] += unitCast(@round(new_direction_vec[2]));
 }
 
 pub fn render(image: RenderImage, size: XY(usize)) void {
@@ -314,21 +306,21 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
                 .x = unitCast(col),
                 .y = unitCast(row),
             };
-            const direction: Xyz(Unit) = .{
-                .x = pixel_pos.x - half_size.x,
-                .y = pixel_pos.y - half_size.y,
-                .z = z_dir,
+            const direction: [3]Unit = .{
+                pixel_pos.x - half_size.x,
+                pixel_pos.y - half_size.y,
+                z_dir,
             };
             const new_direction_vec = zmath.rotate(rotate_quat, @Vector(4, f32){
-                floatFromUnit(f32, direction.x),
-                floatFromUnit(f32, direction.y),
-                floatFromUnit(f32, direction.z),
+                floatFromUnit(f32, direction[0]),
+                floatFromUnit(f32, direction[1]),
+                floatFromUnit(f32, direction[2]),
                 1,
             });
-            const new_direction = Xyz(Unit){
-                .x = unitCast(new_direction_vec[0]),
-                .y = unitCast(new_direction_vec[1]),
-                .z = unitCast(new_direction_vec[2]),
+            const new_direction = [3]Unit{
+                unitCast(new_direction_vec[0]),
+                unitCast(new_direction_vec[1]),
+                unitCast(new_direction_vec[2]),
             };
             image.setPixel(
                 col, row,
