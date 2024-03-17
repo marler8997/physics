@@ -66,7 +66,11 @@ const Sphere = struct {
     is_light_source: bool,
 };
 
-const ground_radius = 2_000_000;
+const ground_radius = switch (@typeInfo(Unit)) {
+    // with an integer unit, we'll get overflow if this is too large
+    .Int => 2_000_000,
+    else => 200_000_000,
+};
 
 // 3 spheres
 const global = struct {
@@ -208,9 +212,9 @@ test "line intersects sphere " {
 }
 
 fn calcNormal(comptime Float: type, v: [3]Unit) [3]Float {
-    const length: f32 = std.math.sqrt(
+    const length = std.math.sqrt(floatFromUnit(f32,
         (v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2])
-    );
+    ));
     return [3]Float{
         floatFromUnit(Float, v[0]) / length,
         floatFromUnit(Float, v[1]) / length,
