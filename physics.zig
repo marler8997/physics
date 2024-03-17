@@ -60,6 +60,10 @@ const global = struct {
         .center = .{ .x = 20_000, .y = 20_000, .z = 50_000 },
         .radius = 10_000,
         .rgb = .{ .r = 255, .g = 255, .b = 0 },
+    }, .{
+        .center = .{ .x = -14_000, .y = 4_000, .z = 50_000 },
+        .radius = 3_000,
+        .rgb = .{ .r = 255, .g = 0, .b = 255 },
     }};
     pub var camera = Camera{
         .pos = .{ .x = 0, .y = 0, .z = 0 },
@@ -76,12 +80,18 @@ const global = struct {
     } = .{};
 };
 
+fn testLog(comptime fmt: []const u8, args: anytype) void {
+    const stderr = std.io.getStdErr().writer();
+    stderr.print(fmt ++ "\n", args) catch |err|
+        std.debug.panic("testLog failed, error={s}", .{@errorName(err)});
+}
+
 fn intersectsSphere(
     pos: [3]i64,
     dir: [3]i64,
     center: [3]i64,
     radius: i64,
-) bool {
+) [2]i64 {
     var a: i64 = 0;
     var b: i64 = 0;
     var c: i64 = -radius * radius;
@@ -91,16 +101,18 @@ fn intersectsSphere(
         c += (pos[i] - center[i]) * (pos[i] - center[i]);
     }
     const discriminant = b*b - 4*a*c;
-    const intersects = discriminant >= 0;
-    if (intersects) {
-        //std.log.info("pt {},{},{}", .{pos[0], pos[1], pos[2]});
-        //std.log.info("dir {},{},{}", .{dir[0], dir[1], dir[2]});
-    }
-    return intersects;
+    if (discriminant < 0)
+        return .{ -1, -1 }; // no intersection
+
+    // Calculate the two solutions (t1 and t2) for the quadratic equation.
+    const sqrtDiscriminant: i64 = @intFromFloat(std.math.sqrt(@as(f64, @floatFromInt(discriminant))));
+    const t1 = @divTrunc(-b - sqrtDiscriminant, 2*a);
+    const t2 = @divTrunc(-b + sqrtDiscriminant, 2*a);
+    return .{ t1, t2 };
 }
 
 fn testIntersectsSphere(
-    intersects: bool,
+    intersects: [2]i64,
     pos: [3]i64,
     dir: [3]i64,
     center: [3]i64,
@@ -125,35 +137,42 @@ fn testIntersectsSphere(
 
 test "line intersects sphere " {
     try testIntersectsSphere(
-        true,
+        .{9, 11},
         .{0, 0, 0}, // pos
         .{0, 0, 1}, // dir
         .{0, 0, 10}, // center
         1, // radius
     );
     try testIntersectsSphere(
-        true,
+        .{0, 0},
         .{0, 0, 0}, // pos
         .{0, 1, 11}, // dir
         .{0, 0, 10}, // center
         1, // radius
     );
     try testIntersectsSphere(
-        true,
+        .{0, 0},
         .{0, 0, 0}, // pos
         .{0, -1, 11}, // dir
         .{0, 0, 10}, // center
         1, // radius
     );
     try testIntersectsSphere(
-        false,
+        .{0, 0},
+        .{0, 0, 0}, // pos
+        .{0, 1, -11}, // dir
+        .{0, 0, 10}, // center
+        1, // radius
+    );
+    try testIntersectsSphere(
+        .{-1, -1},
         .{0, 0, 0}, // pos
         .{0, 2, 11}, // dir
         .{0, 0, 10}, // center
         1, // radius
     );
     try testIntersectsSphere(
-        false,
+        .{-1, -1},
         .{0, 0, 0}, // pos
         .{0, -2, 11}, // dir
         .{0, 0, 10}, // center
@@ -163,13 +182,28 @@ test "line intersects sphere " {
 
 
 fn raycast(pos: Xyz(i32), dir: Xyz(i32)) Rgb {
-    for (global.spheres) |sphere| {
-        if (intersectsSphere(
-            [3]i64{ pos.x, pos.y, pos.z },
-            [3]i64{ dir.x, dir.y, dir.z },
-            [3]i64{ sphere.center.x, sphere.center.y, sphere.center.z },
-            sphere.radius,
-        )) return sphere.rgb;
+    {
+        var maybe_min: ?struct {
+            rgb: Rgb,
+            val: i64,
+        } = null;
+        for (global.spheres) |sphere| {
+            const points = intersectsSphere(
+                [3]i64{ pos.x, pos.y, pos.z },
+                [3]i64{ dir.x, dir.y, dir.z },
+                [3]i64{ sphere.center.x, sphere.center.y, sphere.center.z },
+                sphere.radius,
+            );
+            for (points) |pt| {
+                if (pt >= 0) {
+                    const new_min = if (maybe_min) |min| pt < min.val else true;
+                    if (new_min) {
+                        maybe_min = .{ .rgb = sphere.rgb, .val = pt };
+                    }
+                }
+            }
+        }
+        if (maybe_min) |min| return min.rgb;
     }
 
     if (dir.x <= 0) {
