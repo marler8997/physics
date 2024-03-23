@@ -65,6 +65,7 @@ fn distDiv(num: Dist, denom: Dist) Dist {
 const Camera = struct {
     // camera is now attached to global.spheres[0]
     //pos: [3]Dist,
+    pitch: f32,
     yaw: f32,
 };
 
@@ -119,6 +120,7 @@ const global = struct {
         .is_light_source = false,
     }};
     pub var camera = Camera{
+        .pitch = 0,
         .yaw = 0,
     };
     pub var user_input: struct {
@@ -126,6 +128,8 @@ const global = struct {
         backward: ControlState = .up,
         left: ControlState = .up,
         right: ControlState = .up,
+        pitch_up: ControlState = .up,
+        pitch_down: ControlState = .up,
         turn_left: ControlState = .up,
         turn_right: ControlState = .up,
     } = .{};
@@ -347,6 +351,8 @@ pub const Control = enum {
     backward,
     left,
     right,
+    pitch_up,
+    pitch_down,
     turn_left, // yaw
     turn_right, // yaw
 };
@@ -358,6 +364,8 @@ pub fn onControl(control: Control, state: ControlState) void {
         .backward => &global.user_input.backward,
         .left => &global.user_input.left,
         .right => &global.user_input.right,
+        .pitch_up => &global.user_input.pitch_up,
+        .pitch_down => &global.user_input.pitch_down,
         .turn_left => &global.user_input.turn_left,
         .turn_right => &global.user_input.turn_right,
     };
@@ -522,13 +530,23 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
     applyGravity();
     move();
 
+    if (global.user_input.pitch_up == .down) {
+        global.camera.pitch -= 0.01;
+    }
+    if (global.user_input.pitch_down == .down) {
+        global.camera.pitch += 0.01;
+    }
     if (global.user_input.turn_left == .down) {
         global.camera.yaw -= 0.01;
     }
     if (global.user_input.turn_right == .down) {
         global.camera.yaw += 0.01;
     }
-    const rotate_quat = zmath.quatFromRollPitchYaw(0, global.camera.yaw, 0);
+    const rotate_quat = zmath.quatFromRollPitchYaw(
+        global.camera.pitch,
+        global.camera.yaw,
+        0,
+    );
 
     if (getPlayerMove()) |player_move_unrotated| {
         const player_move_normal = zmath.rotate(rotate_quat, @Vector(4, f32){

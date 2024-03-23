@@ -110,9 +110,9 @@ pub fn main() !void {
 fn vkeyToControl(wParam: win32.VIRTUAL_KEY) ?physics.Control {
     return switch (wParam) {
         .LEFT => .turn_left,
-        //.UP =>
+        .UP => .pitch_up,
         .RIGHT => .turn_right,
-        // .DOWN =>
+        .DOWN => .pitch_down,
         @as(win32.VIRTUAL_KEY, @enumFromInt('W')) => .forward,
         @as(win32.VIRTUAL_KEY, @enumFromInt('S')) => .backward,
         @as(win32.VIRTUAL_KEY, @enumFromInt('A')) => .left,
@@ -122,8 +122,8 @@ fn vkeyToControl(wParam: win32.VIRTUAL_KEY) ?physics.Control {
 }
 fn vkeyToControlEvent(wParam: win32.VIRTUAL_KEY) ?physics.ControlEvent {
     return switch (wParam) {
-        .UP => .speed_up,
-        .DOWN => .speed_down,
+        .OEM_2 => .speed_up, // the '/?' key
+        .OEM_PERIOD => .speed_down,
         @as(win32.VIRTUAL_KEY, @enumFromInt('R')) => .toggle_raytrace,
         else => null,
     };
