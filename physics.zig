@@ -490,13 +490,6 @@ fn move() void {
     enforceNoOverlap();
 }
 
-fn moveCamera(rotate_quat: zmath.Quat, vec: @Vector(4, f32)) void {
-    const new_direction_vec = zmath.rotate(rotate_quat, vec);
-    global.camera.pos[0] += distCast(@round(new_direction_vec[0]));
-    global.camera.pos[1] += distCast(@round(new_direction_vec[1]));
-    global.camera.pos[2] += distCast(@round(new_direction_vec[2]));
-}
-
 pub fn render(image: RenderImage, size: XY(usize)) void {
     applyGravity();
     move();
@@ -505,16 +498,28 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
 
     const user_speed: f32 = std.math.pow(f32, 2, @floatFromInt(global.user_speed));
     if (global.user_input.forward == .down) {
-        moveCamera(rotate_quat, @Vector(4, f32){ 0, 0, user_speed, 1});
+        const travel = zmath.rotate(rotate_quat, @Vector(4, f32){ 0, 0, user_speed, 1});
+        global.camera.pos[0] += travel[0];
+        global.camera.pos[1] += travel[1];
+        global.camera.pos[2] += travel[2];
     }
     if (global.user_input.backward == .down) {
-        moveCamera(rotate_quat, @Vector(4, f32){ 0, 0, -user_speed, 1});
+        const travel = zmath.rotate(rotate_quat, @Vector(4, f32){ 0, 0, -user_speed, 1});
+        global.camera.pos[0] += travel[0];
+        global.camera.pos[1] += travel[1];
+        global.camera.pos[2] += travel[2];
     }
     if (global.user_input.left == .down) {
-        moveCamera(rotate_quat, @Vector(4, f32){ -user_speed, 0, 0, 1});
+        const travel = zmath.rotate(rotate_quat, @Vector(4, f32){ -user_speed, 0, 0, 1});
+        global.camera.pos[0] += travel[0];
+        global.camera.pos[1] += travel[1];
+        global.camera.pos[2] += travel[2];
     }
     if (global.user_input.right == .down) {
-        moveCamera(rotate_quat, @Vector(4, f32){ user_speed, 0, 0, 1});
+        const travel = zmath.rotate(rotate_quat, @Vector(4, f32){ user_speed, 0, 0, 1});
+        global.camera.pos[0] += travel[0];
+        global.camera.pos[1] += travel[1];
+        global.camera.pos[2] += travel[2];
     }
     if (global.user_input.turn_left == .down) {
         global.camera.yaw -= 0.01;
