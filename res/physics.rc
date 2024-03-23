@@ -1,0 +1,5 @@
+// LANG_NEUTRAL(0), SUBLANG_NEUTRAL(0)
+LANGUAGE 0, 0
+
+#define RT_MANIFEST 1
+RT_MANIFEST 24 "physics.manifest"

@@ -22,6 +22,9 @@ pub fn build(b: *std.Build) void {
     if (target.result.os.tag == .windows) {
         exe.subsystem = .Windows;
         exe.root_module.addImport("win32", zigwin32_dep.module("zigwin32"));
+        exe.addWin32ResourceFile(.{
+            .file = .{ .path = "res/physics.rc" },
+        });
     }
 
     b.installArtifact(exe);
