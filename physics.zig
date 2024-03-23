@@ -63,8 +63,8 @@ fn distDiv(num: Dist, denom: Dist) Dist {
 // /        \
 //
 const Camera = struct {
-    // initial position of every ray that is cast
-    pos: [3]Dist,
+    // camera is now attached to global.spheres[0]
+    //pos: [3]Dist,
     yaw: f32,
 };
 
@@ -86,6 +86,14 @@ const global = struct {
     pub var user_speed: u8 = 4;
 
     pub var spheres = [_]Sphere{.{
+        // player/camera
+        .center = .{ 0, earth_radius + meters(1), 0 },
+        .radius = meters(1),
+        .velocity = .{ 0, 0, 0 },
+        .mass = kilograms(68),
+        .rgb = .{ .r = 0, .g = 255, .b = 0 },
+        .is_light_source = false,
+    }, .{
         // earth
         .center = .{  0, 0, 0 },
         .radius = kilometers(6371),
@@ -111,7 +119,6 @@ const global = struct {
         .is_light_source = false,
     }};
     pub var camera = Camera{
-        .pos = .{ 0, earth_radius + meters(2), 0 },
         .yaw = 0,
     };
     pub var user_input: struct {
@@ -274,7 +281,8 @@ fn raycast(pos: [3]Dist, dir: [3]Dist, depth: u32, maybe_exclude: ?*Sphere) ?Rgb
             sphere: *Sphere,
             dist: Dist,
         } = null;
-        for (&global.spheres) |*sphere| {
+        // skip the first sphere since that's the player
+        for (global.spheres[1..]) |*sphere| {
             if (maybe_exclude) |exclude| {
                 if (sphere == exclude) continue;
             }
@@ -440,6 +448,10 @@ fn applyGravity() void {
 }
 var frame_count: u32 = 0;
 fn move() void {
+    // algorithm depends on this being true before beginning
+    // to avoid infinite passes to resolve collisions
+    //enforceNoOverlap();
+
     var new_centers: [max_sphere_count][3]Dist = undefined;
 
     for (&global.spheres, 0..) |*sphere, i| {
@@ -490,42 +502,68 @@ fn move() void {
     enforceNoOverlap();
 }
 
+fn getPlayerMove() ?[3]f32 {
+    const maybe_z: ?f32 = if (global.user_input.forward == .down)
+        (if (global.user_input.backward == .down) null else 1)
+        else (if (global.user_input.backward == .down) -1 else null);
+    const maybe_x: ?f32 = if (global.user_input.right == .down)
+        (if (global.user_input.left == .down) null else 1)
+        else (if (global.user_input.left == .down) -1 else null);
+    if (maybe_z == null and maybe_x == null)
+        return null;
+    return calcNormal(f32, .{
+        maybe_x orelse 0,
+        0,
+        maybe_z orelse 0,
+    });
+}
+
 pub fn render(image: RenderImage, size: XY(usize)) void {
     applyGravity();
     move();
 
-    const rotate_quat = zmath.quatFromRollPitchYaw(0, global.camera.yaw, 0);
-
-    const user_speed: f32 = std.math.pow(f32, 2, @floatFromInt(global.user_speed));
-    if (global.user_input.forward == .down) {
-        const travel = zmath.rotate(rotate_quat, @Vector(4, f32){ 0, 0, user_speed, 1});
-        global.camera.pos[0] += travel[0];
-        global.camera.pos[1] += travel[1];
-        global.camera.pos[2] += travel[2];
-    }
-    if (global.user_input.backward == .down) {
-        const travel = zmath.rotate(rotate_quat, @Vector(4, f32){ 0, 0, -user_speed, 1});
-        global.camera.pos[0] += travel[0];
-        global.camera.pos[1] += travel[1];
-        global.camera.pos[2] += travel[2];
-    }
-    if (global.user_input.left == .down) {
-        const travel = zmath.rotate(rotate_quat, @Vector(4, f32){ -user_speed, 0, 0, 1});
-        global.camera.pos[0] += travel[0];
-        global.camera.pos[1] += travel[1];
-        global.camera.pos[2] += travel[2];
-    }
-    if (global.user_input.right == .down) {
-        const travel = zmath.rotate(rotate_quat, @Vector(4, f32){ user_speed, 0, 0, 1});
-        global.camera.pos[0] += travel[0];
-        global.camera.pos[1] += travel[1];
-        global.camera.pos[2] += travel[2];
-    }
     if (global.user_input.turn_left == .down) {
         global.camera.yaw -= 0.01;
     }
     if (global.user_input.turn_right == .down) {
         global.camera.yaw += 0.01;
+    }
+    const rotate_quat = zmath.quatFromRollPitchYaw(0, global.camera.yaw, 0);
+
+    if (getPlayerMove()) |player_move_unrotated| {
+        const player_move_normal = zmath.rotate(rotate_quat, @Vector(4, f32){
+            player_move_unrotated[0],
+            player_move_unrotated[1],
+            player_move_unrotated[2],
+            1,
+        });
+        const user_speed: f32 = std.math.pow(f32, 2, @floatFromInt(global.user_speed));
+        const new_player_pos = [3]Dist{
+            global.spheres[0].center[0] + distCast(player_move_normal[0] * user_speed),
+            global.spheres[0].center[1] + distCast(player_move_normal[1] * user_speed),
+            global.spheres[0].center[2] + distCast(player_move_normal[2] * user_speed),
+        };
+        var move_has_collision = false;
+        for (global.spheres[1..]) |other_sphere| {
+            const dist_vector = [3]Dist {
+                new_player_pos[0] - other_sphere.center[0],
+                new_player_pos[1] - other_sphere.center[1],
+                new_player_pos[2] - other_sphere.center[2],
+            };
+            const dist = calcMagnitude3d(f64, dist_vector);
+            const min_dist = floatFromDist(f64, global.spheres[0].radius + other_sphere.radius);
+            if (dist < min_dist) {
+                std.log.info("player move collision", .{});
+                move_has_collision = true;
+                break;
+            }
+        }
+        if (!move_has_collision) {
+            enforceNoOverlap();
+            global.spheres[0].center = new_player_pos;
+            // sanity check
+            enforceNoOverlap();
+        }
     }
 
     const half_size: XY(Dist) = .{
@@ -535,6 +573,15 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
     const default_z_magnitude = (@abs(half_size.x) + @abs(half_size.y)) / 2;
     const focal_mult = 10.0;
     const z_dir: Dist = focal_mult * default_z_magnitude;
+
+    // Put the camera at the top of our sphere
+    // TODO: this won't be right once we add the ability to
+    //       change the pitch/roll of the camera
+    const camera_pos = [3]Dist{
+        global.spheres[0].center[0],
+        global.spheres[0].center[1] + global.spheres[0].radius,
+        global.spheres[0].center[2],
+    };
 
     for (0 .. size.y) |row| {
         for (0 .. size.x) |col| {
@@ -558,7 +605,12 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
                 distCast(new_direction_vec[1]),
                 distCast(new_direction_vec[2]),
             };
-            const ray: Rgb = raycast(global.camera.pos, new_direction, 0, null) orelse (
+            const ray: Rgb = raycast(
+                camera_pos,
+                new_direction,
+                0,
+                null,
+            ) orelse (
                 if (global.raytrace) .{ .r = 0, .g = 0, .b = 0 }
                 else .{ .r = 0, .g = 255, .b = 255 }
              );
