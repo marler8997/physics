@@ -63,7 +63,7 @@ fn distDiv(num: Dist, denom: Dist) Dist {
 // /        \
 //
 const Camera = struct {
-    // camera is now attached to global.spheres[0]
+    // camera is now attached to global.player_sphere
     //pos: [3]Dist,
     pitch: f32,
     yaw: f32,
@@ -119,6 +119,7 @@ const global = struct {
         .rgb = .{ .r = 212, .g = 102, .b = 38 },
         .is_light_source = false,
     }};
+    pub const player_sphere = &spheres[0];
     pub var camera = Camera{
         .pitch = 0,
         .yaw = 0,
@@ -285,8 +286,10 @@ fn raycast(pos: [3]Dist, dir: [3]Dist, depth: u32, maybe_exclude: ?*Sphere) ?Rgb
             sphere: *Sphere,
             dist: Dist,
         } = null;
-        // skip the first sphere since that's the player
         for (global.spheres[1..]) |*sphere| {
+            // skip the first sphere since that's the player
+            if (sphere == global.player_sphere) continue;
+
             if (maybe_exclude) |exclude| {
                 if (sphere == exclude) continue;
             }
@@ -557,9 +560,9 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
         });
         const user_speed: f32 = std.math.pow(f32, 2, @floatFromInt(global.user_speed));
         const new_player_pos = [3]Dist{
-            global.spheres[0].center[0] + distCast(player_move_normal[0] * user_speed),
-            global.spheres[0].center[1] + distCast(player_move_normal[1] * user_speed),
-            global.spheres[0].center[2] + distCast(player_move_normal[2] * user_speed),
+            global.player_sphere.center[0] + distCast(player_move_normal[0] * user_speed),
+            global.player_sphere.center[1] + distCast(player_move_normal[1] * user_speed),
+            global.player_sphere.center[2] + distCast(player_move_normal[2] * user_speed),
         };
         var move_has_collision = false;
         for (global.spheres[1..]) |other_sphere| {
@@ -569,7 +572,7 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
                 new_player_pos[2] - other_sphere.center[2],
             };
             const dist = calcMagnitude3d(f64, dist_vector);
-            const min_dist = floatFromDist(f64, global.spheres[0].radius + other_sphere.radius);
+            const min_dist = floatFromDist(f64, global.player_sphere.radius + other_sphere.radius);
             if (dist < min_dist) {
                 std.log.info("player move collision", .{});
                 move_has_collision = true;
@@ -578,7 +581,7 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
         }
         if (!move_has_collision) {
             enforceNoOverlap();
-            global.spheres[0].center = new_player_pos;
+            global.player_sphere.center = new_player_pos;
             // sanity check
             enforceNoOverlap();
         }
@@ -596,9 +599,9 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
     // TODO: this won't be right once we add the ability to
     //       change the pitch/roll of the camera
     const camera_pos = [3]Dist{
-        global.spheres[0].center[0],
-        global.spheres[0].center[1] + global.spheres[0].radius,
-        global.spheres[0].center[2],
+        global.player_sphere.center[0],
+        global.player_sphere.center[1] + global.player_sphere.radius,
+        global.player_sphere.center[2],
     };
 
     for (0 .. size.y) |row| {
