@@ -6,30 +6,43 @@ const Rgb = @import("Rgb.zig");
 const XY = @import("xy.zig").XY;
 const zmath = @import("zmathmini.zig");
 
-// A World Unit
-//const Unit = i64;
-const Unit = f32;
-fn unitCast(v: anytype) Unit {
+const Dist = f64;
+fn centimeters(comptime d: comptime_float) comptime_float { return d; }
+fn meters     (comptime d: comptime_float) comptime_float { return d * 100; }
+fn kilometers (comptime d: comptime_float) comptime_float { return d * 10000; }
+
+const Mass = f64;
+fn grams    (comptime m: comptime_float) comptime_float { return m; }
+fn kilograms(comptime m: comptime_float) comptime_float { return m * 1000; }
+
+fn distCast(v: anytype) Dist {
     const V = @TypeOf(v);
-    return switch (@typeInfo(Unit)) {
+    return switch (@typeInfo(Dist)) {
         .Int => switch (@typeInfo(V)) {
             .Int => @intCast(v),
             .Float => @intFromFloat(v),
-            else => @compileError("todo: unitCast to " ++ @typeName(V)),
+            else => @compileError("todo: distCast to " ++ @typeName(V)),
         },
         .Float => switch (@typeInfo(V)) {
             .Int => @floatFromInt(v),
             .Float => @floatCast(v),
-            else => @compileError("todo: unitCast to " ++ @typeName(V)),
+            else => @compileError("todo: distCast to " ++ @typeName(V)),
         },
-        else => @compileError("todo: handle Unit type " ++ @typeName(Unit)),
+        else => @compileError("todo: handle Dist type " ++ @typeName(Dist)),
     };
 }
-fn floatFromUnit(comptime Float: type, unit: Unit) Float {
-    switch (@typeInfo(Unit)) {
-        .Int => return @floatFromInt(unit),
-        .Float => return @floatCast(unit),
-        else => @compileError("todo: handle Unit type " ++ @typeName(Unit)),
+fn floatFromDist(comptime Float: type, dist: Dist) Float {
+    switch (@typeInfo(Dist)) {
+        .Int => return @floatFromInt(dist),
+        .Float => return @floatCast(dist),
+        else => @compileError("todo: handle Dist type " ++ @typeName(Dist)),
+    }
+}
+fn distDiv(num: Dist, denom: Dist) Dist {
+    switch (@typeInfo(Dist)) {
+        .Int => return @divTrunc(num, denom),
+        .Float => return num / denom,
+        else => @compileError("todo: handle Dist type " ++ @typeName(Dist)),
     }
 }
 
@@ -51,68 +64,55 @@ fn floatFromUnit(comptime Float: type, unit: Unit) Float {
 //
 const Camera = struct {
     // initial position of every ray that is cast
-    pos: [3]Unit,
+    pos: [3]Dist,
     yaw: f32,
-    //direction: [3]Unit,
-    // distance from the pos to the screen
-    len: Unit,
-    //planks_per_pixel: Ratio(Unit),
 };
 
 const Sphere = struct {
-    center: [3]Unit,
-    radius: Unit,
-    velocity: [3]Unit,
-    mass: f32,
+    center: [3]Dist,
+    radius: Dist,
+    velocity: [3]Dist,
+    mass: Mass,
     rgb: Rgb,
     is_light_source: bool,
 };
 
-const ground_radius = switch (@typeInfo(Unit)) {
-    // with an integer unit, we'll get overflow if this is too large
-    .Int => 2_000_000,
-    else => 200_000_000,
-};
+const earth_radius = kilometers(6371);
 
-// 3 spheres
 const max_sphere_count = 20;
 const max_user_speed = 30;
 const global = struct {
     pub var raytrace: bool = false;
-    pub var user_speed: u8 = 10;
+    pub var user_speed: u8 = 4;
+
     pub var spheres = [_]Sphere{.{
-        .center = .{  0, 10_000, 40_000 },
-        .radius = 5_000,
+        // earth
+        .center = .{  0, 0, 0 },
+        .radius = kilometers(6371),
         .velocity = .{ 0, 0, 0 },
-        .mass = 1,
-        .rgb = .{ .r = 255, .g = 0, .b = 0 },
-        .is_light_source = false,
-    }, .{
-        .center = .{ -14_000, 15_000, 50_000 },
-        .radius = 3_000,
-        .velocity = .{ 0, 0, 0 },
-        .mass = 1,
-        .rgb = .{ .r = 255, .g = 0, .b = 255 },
-        .is_light_source = false,
-    }, .{
-        .center = .{ 0, -ground_radius, 0 },
-        .radius = ground_radius,
-        .velocity = .{ 0, 0, 0 },
-        .mass = 100_000_000_000,
+        .mass = kilograms(5.97219e24),
         .rgb = .{ .r = 102, .g = 51, .b = 0 },
         .is_light_source = false,
     }, .{
-        .center = .{ 20_000, 150_000, 50_000 },
-        .radius = 120_000,
+        // sun
+        .center = .{  0, 0, kilometers(149_000_000) },
+        .radius = kilometers(696_340),
         .velocity = .{ 0, 0, 0 },
-        .mass = 1000.0,
+        .mass = kilograms(1.9891e30),
         .rgb = .{ .r = 255, .g = 255, .b = 255 },
         .is_light_source = true,
+    }, .{
+        // basketball
+        .center = .{  meters(-0.5), earth_radius + meters(2), meters(25) },
+        .radius = centimeters(12),
+        .velocity = .{ 0, 0, 0 },
+        .mass = grams(600),
+        .rgb = .{ .r = 212, .g = 102, .b = 38 },
+        .is_light_source = false,
     }};
     pub var camera = Camera{
-        .pos = .{ 0, 1_000, 0 },
+        .pos = .{ 0, earth_radius + meters(2), 0 },
         .yaw = 0,
-        .len = 10,
     };
     pub var user_input: struct {
         forward: ControlState = .up,
@@ -131,14 +131,14 @@ fn testLog(comptime fmt: []const u8, args: anytype) void {
 }
 
 fn intersectsSphere(
-    pos: [3]Unit,
-    dir: [3]Unit,
-    center: [3]Unit,
-    radius: Unit,
-) [2]Unit {
-    var a: Unit = 0;
-    var b: Unit = 0;
-    var c: Unit = -radius * radius;
+    pos: [3]Dist,
+    dir: [3]Dist,
+    center: [3]Dist,
+    radius: Dist,
+) [2]Dist {
+    var a: Dist = 0;
+    var b: Dist = 0;
+    var c: Dist = -radius * radius;
     for (0 .. 3) |i| {
         a += dir[i] * dir[i];
         b += 2 * dir[i] * (pos[i] - center[i]);
@@ -149,18 +149,18 @@ fn intersectsSphere(
         return .{ -1, -1 }; // no intersection
 
     // Calculate the two solutions (t1 and t2) for the quadratic equation.
-    const sqrtDiscriminant: Unit = unitCast(std.math.sqrt(floatFromUnit(f32, discriminant)));
-    const t1 = @divTrunc(-b - sqrtDiscriminant, 2*a);
-    const t2 = @divTrunc(-b + sqrtDiscriminant, 2*a);
+    const sqrtDiscriminant: Dist = distCast(std.math.sqrt(floatFromDist(f64, discriminant)));
+    const t1 = distDiv(-b - sqrtDiscriminant, 2*a);
+    const t2 = distDiv(-b + sqrtDiscriminant, 2*a);
     return .{ t1, t2 };
 }
 
 fn testIntersectsSphere(
-    intersects: [2]Unit,
-    pos: [3]Unit,
-    dir: [3]Unit,
-    center: [3]Unit,
-    radius: Unit,
+    intersects: [2]Dist,
+    pos: [3]Dist,
+    dir: [3]Dist,
+    center: [3]Dist,
+    radius: Dist,
 ) !void {
     try std.testing.expectEqual(intersects, intersectsSphere(
         pos, dir, center, radius
@@ -224,13 +224,13 @@ test "line intersects sphere " {
     );
 }
 
-fn calcMagnitude3d(comptime Float: type, v: [3]Unit) Float {
+fn calcMagnitude3d(comptime Float: type, v: [3]Dist) Float {
     return @sqrt(
-        floatFromUnit(Float, (v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]))
+        floatFromDist(Float, (v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]))
     );
 }
 
-fn calcDistance3d(comptime Float: type, a: [3]Unit, b: [3]Unit) Float {
+fn calcDistance3d(comptime Float: type, a: [3]Dist, b: [3]Dist) Float {
     return calcMagnitude3d(Float, .{
         a[0] - b[0],
         a[1] - b[1],
@@ -238,12 +238,12 @@ fn calcDistance3d(comptime Float: type, a: [3]Unit, b: [3]Unit) Float {
     });
 }
 
-fn calcNormal(comptime Float: type, v: [3]Unit) [3]Float {
+fn calcNormal(comptime Float: type, v: [3]Dist) [3]Float {
     const magnitude = calcMagnitude3d(Float, v);
     return [3]Float{
-        floatFromUnit(Float, v[0]) / magnitude,
-        floatFromUnit(Float, v[1]) / magnitude,
-        floatFromUnit(Float, v[2]) / magnitude,
+        floatFromDist(Float, v[0]) / magnitude,
+        floatFromDist(Float, v[1]) / magnitude,
+        floatFromDist(Float, v[2]) / magnitude,
     };
 }
 
@@ -255,24 +255,24 @@ fn filterColor(color: Rgb, light: Rgb) Rgb {
     };
 }
 
-fn getReflectDir(dir: [3]Unit, normal: [3]f32) [3]Unit {
+fn getReflectDir(dir: [3]Dist, normal: [3]f32) [3]Dist {
     const scale = 2 * (
-        floatFromUnit(f32, dir[0]) * normal[0] +
-        floatFromUnit(f32, dir[1]) * normal[1] +
-        floatFromUnit(f32, dir[2]) * normal[2]
+        floatFromDist(f32, dir[0]) * normal[0] +
+        floatFromDist(f32, dir[1]) * normal[1] +
+        floatFromDist(f32, dir[2]) * normal[2]
     );
     return .{
-        unitCast(floatFromUnit(f32, dir[0]) - scale * normal[0]),
-        unitCast(floatFromUnit(f32, dir[1]) - scale * normal[1]),
-        unitCast(floatFromUnit(f32, dir[2]) - scale * normal[2]),
+        distCast(floatFromDist(f32, dir[0]) - scale * normal[0]),
+        distCast(floatFromDist(f32, dir[1]) - scale * normal[1]),
+        distCast(floatFromDist(f32, dir[2]) - scale * normal[2]),
     };
 }
 
-fn raycast(pos: [3]Unit, dir: [3]Unit, depth: u32, maybe_exclude: ?*Sphere) ?Rgb {
+fn raycast(pos: [3]Dist, dir: [3]Dist, depth: u32, maybe_exclude: ?*Sphere) ?Rgb {
     {
         var maybe_closest: ?struct {
             sphere: *Sphere,
-            dist: Unit,
+            dist: Dist,
         } = null;
         for (&global.spheres) |*sphere| {
             if (maybe_exclude) |exclude| {
@@ -286,6 +286,14 @@ fn raycast(pos: [3]Unit, dir: [3]Unit, depth: u32, maybe_exclude: ?*Sphere) ?Rgb
             );
             for (distances) |dist| {
                 if (dist >= 0) {
+                    if (maybe_closest) |min| {
+                        if (min.dist == dist) {
+                            std.debug.panic("2 objects at the same distance {d} pos {d},{d},{d}!?!", .{
+                                dist,
+                                pos[0], pos[1], pos[2],
+                            });
+                        }
+                    }
                     const new_min = if (maybe_closest) |min| dist < min.dist else true;
                     if (new_min) {
                         maybe_closest = .{ .sphere = sphere, .dist = dist };
@@ -307,10 +315,10 @@ fn raycast(pos: [3]Unit, dir: [3]Unit, depth: u32, maybe_exclude: ?*Sphere) ?Rgb
             }
 
             const normal = calcNormal(f32, dir);
-            const new_pos: [3]Unit = .{
-                pos[0] + unitCast(normal[0] * floatFromUnit(f32, closest.dist)),
-                pos[1] + unitCast(normal[1] * floatFromUnit(f32, closest.dist)),
-                pos[2] + unitCast(normal[2] * floatFromUnit(f32, closest.dist)),
+            const new_pos: [3]Dist = .{
+                pos[0] + distCast(normal[0] * floatFromDist(f32, closest.dist)),
+                pos[1] + distCast(normal[1] * floatFromDist(f32, closest.dist)),
+                pos[2] + distCast(normal[2] * floatFromDist(f32, closest.dist)),
             };
             const reflect_normal = calcNormal(f32, .{
                 new_pos[0] - closest.sphere.center[0],
@@ -377,13 +385,13 @@ pub fn onControlEvent(event: ControlEvent) void {
 fn enforceNoOverlap() void {
     for (&global.spheres, 0..) |*sphere, i| {
         for (global.spheres[i + 1..]) |other_sphere| {
-            const dist_vector = [3]Unit {
+            const dist_vector = [3]Dist {
                 sphere.center[0] - other_sphere.center[0],
                 sphere.center[1] - other_sphere.center[1],
                 sphere.center[2] - other_sphere.center[2],
             };
             const dist = calcMagnitude3d(f64, dist_vector);
-            const min_dist = floatFromUnit(f64, sphere.radius + other_sphere.radius);
+            const min_dist = floatFromDist(f64, sphere.radius + other_sphere.radius);
             if (dist < min_dist)
                 std.debug.panic("two spheres are overlapping!", .{});
         }
@@ -394,44 +402,48 @@ pub fn init() void {
     enforceNoOverlap();
 }
 
-const gravity_constant = 10_000_000;
+const gravity_constant: comptime_float = 0.000000000052;
 
 fn applyGravity() void {
     for (&global.spheres, 0..) |*sphere, first_sphere_index| {
         for (global.spheres[first_sphere_index + 1..]) |*other_sphere| {
-            const dist_vector = [3]Unit {
+            const dist_vector = [3]Dist {
                 sphere.center[0] - other_sphere.center[0],
                 sphere.center[1] - other_sphere.center[1],
                 sphere.center[2] - other_sphere.center[2],
             };
             const dist_magnitude = calcMagnitude3d(f64, dist_vector);
             const dist_vector_normalized = [3]f64{
-                floatFromUnit(f64, dist_vector[0]) / dist_magnitude,
-                floatFromUnit(f64, dist_vector[1]) / dist_magnitude,
-                floatFromUnit(f64, dist_vector[2]) / dist_magnitude,
+                floatFromDist(f64, dist_vector[0]) / dist_magnitude,
+                floatFromDist(f64, dist_vector[1]) / dist_magnitude,
+                floatFromDist(f64, dist_vector[2]) / dist_magnitude,
             };
             //const force = gravity_constant * sphere.mass * other_sphere.mass / (dist_magnitude * dist_magnitude);
             //std.log.info("force {}", .{force});
             const dist_mult: f64 = gravity_constant / (dist_magnitude * dist_magnitude);
+            //std.log.info("gravity {} {}: {}", .{first_sphere_index, j, dist_mult});
             const parts = [3]f64{
                 dist_vector_normalized[0] * dist_mult,
                 dist_vector_normalized[1] * dist_mult,
                 dist_vector_normalized[2] * dist_mult,
             };
-            sphere.velocity[0] -= unitCast(parts[0] * other_sphere.mass / sphere.mass);
-            sphere.velocity[1] -= unitCast(parts[1] * other_sphere.mass / sphere.mass);
-            sphere.velocity[2] -= unitCast(parts[2] * other_sphere.mass / sphere.mass);
-            other_sphere.velocity[0] += unitCast(parts[0] * sphere.mass / other_sphere.mass);
-            other_sphere.velocity[1] += unitCast(parts[1] * sphere.mass / other_sphere.mass);
-            other_sphere.velocity[2] += unitCast(parts[2] * sphere.mass / other_sphere.mass);
+            sphere.velocity[0] -= distCast(parts[0] * other_sphere.mass / sphere.mass);
+            sphere.velocity[1] -= distCast(parts[1] * other_sphere.mass / sphere.mass);
+            sphere.velocity[2] -= distCast(parts[2] * other_sphere.mass / sphere.mass);
+            //std.log.info("  {}: velocity {d},{d},{d}", .{first_sphere_index, sphere.velocity[0], sphere.velocity[1], sphere.velocity[2]});
+            other_sphere.velocity[0] += distCast(parts[0] * sphere.mass / other_sphere.mass);
+            other_sphere.velocity[1] += distCast(parts[1] * sphere.mass / other_sphere.mass);
+            other_sphere.velocity[2] += distCast(parts[2] * sphere.mass / other_sphere.mass);
+            //std.log.info("  {}: velocity {d},{d},{d}", .{j, other_sphere.velocity[0], other_sphere.velocity[1], other_sphere.velocity[2]});
         }
     }
 }
+var frame_count: u32 = 0;
 fn move() void {
-    var new_centers: [max_sphere_count][3]Unit = undefined;
+    var new_centers: [max_sphere_count][3]Dist = undefined;
 
     for (&global.spheres, 0..) |*sphere, i| {
-        new_centers[i] = [3]Unit {
+        new_centers[i] = [3]Dist {
             sphere.center[0] + sphere.velocity[0],
             sphere.center[1] + sphere.velocity[1],
             sphere.center[2] + sphere.velocity[2],
@@ -443,19 +455,23 @@ fn move() void {
         var collisions_resolved: u32 = 0;
         for (&global.spheres, 0..) |*sphere, i| {
             for (global.spheres[i + 1..], i + 1..) |*other_sphere, j| {
-                const dist_vector = [3]Unit {
+                const dist_vector = [3]Dist {
                     new_centers[i][0] - new_centers[j][0],
                     new_centers[i][1] - new_centers[j][1],
                     new_centers[i][2] - new_centers[j][2],
                 };
                 const dist = calcMagnitude3d(f64, dist_vector);
-                const min_dist = floatFromUnit(f64, sphere.radius + other_sphere.radius);
+                const min_dist = floatFromDist(f64, sphere.radius + other_sphere.radius);
                 if (dist < min_dist) {
+                    //std.log.info("COLLISION between {} and {}!", .{i, j});
                     collisions_resolved += 1;
                     // TODO: adjust velocity/etc better :)
                     sphere.velocity[0] = 0;
                     sphere.velocity[1] = 0;
                     sphere.velocity[2] = 0;
+                    other_sphere.velocity[0] = 0;
+                    other_sphere.velocity[1] = 0;
+                    other_sphere.velocity[2] = 0;
                     // TODO: move both spheres close toward their current
                     //       location rather than just snapping back to
                     //       their original location
@@ -465,6 +481,7 @@ fn move() void {
             }
         }
         if (collisions_resolved == 0) break;
+        //std.log.info("resolved {} collisions", .{collisions_resolved});
     }
 
     for (&global.spheres, 0..) |*sphere, i| {
@@ -475,9 +492,9 @@ fn move() void {
 
 fn moveCamera(rotate_quat: zmath.Quat, vec: @Vector(4, f32)) void {
     const new_direction_vec = zmath.rotate(rotate_quat, vec);
-    global.camera.pos[0] += unitCast(@round(new_direction_vec[0]));
-    global.camera.pos[1] += unitCast(@round(new_direction_vec[1]));
-    global.camera.pos[2] += unitCast(@round(new_direction_vec[2]));
+    global.camera.pos[0] += distCast(@round(new_direction_vec[0]));
+    global.camera.pos[1] += distCast(@round(new_direction_vec[1]));
+    global.camera.pos[2] += distCast(@round(new_direction_vec[2]));
 }
 
 pub fn render(image: RenderImage, size: XY(usize)) void {
@@ -500,39 +517,41 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
         moveCamera(rotate_quat, @Vector(4, f32){ user_speed, 0, 0, 1});
     }
     if (global.user_input.turn_left == .down) {
-        global.camera.yaw -= 0.1;
+        global.camera.yaw -= 0.01;
     }
     if (global.user_input.turn_right == .down) {
-        global.camera.yaw += 0.1;
+        global.camera.yaw += 0.01;
     }
 
-    const half_size: XY(Unit) = .{
-        .x = @divTrunc(unitCast(size.x), 2),
-        .y = @divTrunc(unitCast(size.y), 2),
+    const half_size: XY(Dist) = .{
+        .x = distDiv(distCast(size.x), 2),
+        .y = distDiv(distCast(size.y), 2),
     };
-    const z_dir: Unit = unitCast((@abs(half_size.x) + @abs(half_size.y)) / 2);
+    const default_z_magnitude = (@abs(half_size.x) + @abs(half_size.y)) / 2;
+    const focal_mult = 10.0;
+    const z_dir: Dist = focal_mult * default_z_magnitude;
 
     for (0 .. size.y) |row| {
         for (0 .. size.x) |col| {
-            const pixel_pos: XY(Unit) = .{
-                .x = unitCast(col),
-                .y = unitCast(row),
+            const pixel_pos: XY(Dist) = .{
+                .x = distCast(col),
+                .y = distCast(row),
             };
-            const direction: [3]Unit = .{
+            const direction: [3]Dist = .{
                 pixel_pos.x - half_size.x,
                 pixel_pos.y - half_size.y,
-                z_dir,
+                distCast(z_dir),
             };
             const new_direction_vec = zmath.rotate(rotate_quat, @Vector(4, f32){
-                floatFromUnit(f32, direction[0]),
-                floatFromUnit(f32, direction[1]),
-                floatFromUnit(f32, direction[2]),
+                floatFromDist(f32, direction[0]),
+                floatFromDist(f32, direction[1]),
+                floatFromDist(f32, direction[2]),
                 1,
             });
-            const new_direction = [3]Unit{
-                unitCast(new_direction_vec[0]),
-                unitCast(new_direction_vec[1]),
-                unitCast(new_direction_vec[2]),
+            const new_direction = [3]Dist{
+                distCast(new_direction_vec[0]),
+                distCast(new_direction_vec[1]),
+                distCast(new_direction_vec[2]),
             };
             const ray: Rgb = raycast(global.camera.pos, new_direction, 0, null) orelse (
                 if (global.raytrace) .{ .r = 0, .g = 0, .b = 0 }
