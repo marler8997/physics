@@ -5,6 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const zigwin32_dep = b.dependency("zigwin32", .{});
+    const zmath = b.dependency("zmath", .{});
 
     const root_source_path: []const u8 = switch (target.result.os.tag) {
         .windows => "win32.zig",
@@ -19,6 +20,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    exe.root_module.addImport("zmath", zmath.module("root"));
     if (target.result.os.tag == .windows) {
         exe.subsystem = .Windows;
         exe.root_module.addImport("win32", zigwin32_dep.module("zigwin32"));

@@ -4,7 +4,7 @@ const std = @import("std");
 const RenderImage = @import("RenderImage.zig");
 const Rgb = @import("Rgb.zig");
 const XY = @import("xy.zig").XY;
-const zmath = @import("zmathmini.zig");
+const zmath = @import("zmath");
 
 const Dist = f64;
 fn centimeters(comptime d: comptime_float) comptime_float { return d; }
