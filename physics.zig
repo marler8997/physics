@@ -65,6 +65,11 @@ fn distDiv(num: Dist, denom: Dist) Dist {
 const Camera = struct {
     // camera is now attached to global.player_sphere
     //pos: [3]Dist,
+    angles: EulerAngles,
+};
+
+const EulerAngles = struct {
+    roll: f32,
     pitch: f32,
     yaw: f32,
 };
@@ -78,7 +83,10 @@ const Sphere = struct {
     is_light_source: bool,
 };
 
-const earth_radius = kilometers(6371);
+const little_earth = false;
+const little_earth_radius = kilometers(1);
+const little_earth_mass = kilograms(5.97219e18);
+const earth_radius = if (little_earth) little_earth_radius else kilometers(6371);
 
 const max_sphere_count = 20;
 const max_user_speed = 30;
@@ -97,9 +105,11 @@ const global = struct {
     }, .{
         // earth
         .center = .{  0, 0, 0 },
-        .radius = kilometers(6371),
+        .radius = earth_radius,
         .velocity = .{ 0, 0, 0 },
-        .mass = kilograms(5.97219e24),
+        .mass =
+            if (little_earth) little_earth_mass
+            else kilograms(5.97219e24),
         .rgb = .{ .r = 102, .g = 51, .b = 0 },
         .is_light_source = false,
     }, .{
@@ -120,9 +130,13 @@ const global = struct {
         .is_light_source = false,
     }};
     pub const player_sphere = &spheres[0];
+    pub const earth_sphere = &spheres[1];
     pub var camera = Camera{
-        .pitch = 0,
-        .yaw = 0,
+        .angles = .{
+            .roll = 0,
+            .pitch = 0,
+            .yaw = 0,
+        },
     };
     pub var user_input: struct {
         forward: ControlState = .up,
@@ -200,21 +214,21 @@ test "line intersects sphere " {
         1, // radius
     );
     try testIntersectsSphere(
-        .{0, 0},
+        .{0.8631933134440704, 0.9400853750805198 },
         .{0, 0, 0}, // pos
         .{0, 1, 11}, // dir
         .{0, 0, 10}, // center
         1, // radius
     );
     try testIntersectsSphere(
-        .{0, 0},
+        .{0.8631933134440704, 0.9400853750805198 },
         .{0, 0, 0}, // pos
         .{0, -1, 11}, // dir
         .{0, 0, 10}, // center
         1, // radius
     );
     try testIntersectsSphere(
-        .{0, 0},
+        .{-0.9400853750805198, -0.8631933134440704 },
         .{0, 0, 0}, // pos
         .{0, 1, -11}, // dir
         .{0, 0, 10}, // center
@@ -236,28 +250,33 @@ test "line intersects sphere " {
     );
 }
 
-fn calcMagnitude3d(comptime Float: type, v: [3]Dist) Float {
+fn calcMagnitude3d(comptime T: type, v: [3]T) T {
     return @sqrt(
-        floatFromDist(Float, (v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]))
+        floatFromDist(T, (v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]))
     );
 }
 
-fn calcDistance3d(comptime Float: type, a: [3]Dist, b: [3]Dist) Float {
-    return calcMagnitude3d(Float, .{
+fn calcDistance3d(comptime T: type, a: [3]T, b: [3]T) T {
+    return calcMagnitude3d(T, .{
         a[0] - b[0],
         a[1] - b[1],
         a[2] - b[2],
     });
 }
 
-fn calcNormal(comptime Float: type, v: [3]Dist) [3]Float {
-    const magnitude = calcMagnitude3d(Float, v);
-    return [3]Float{
-        floatFromDist(Float, v[0]) / magnitude,
-        floatFromDist(Float, v[1]) / magnitude,
-        floatFromDist(Float, v[2]) / magnitude,
+fn calcUnitVector(comptime T: type, v: [3]T) [3]T {
+    const magnitude = calcMagnitude3d(T, v);
+    return [3]T{
+        v[0] / magnitude,
+        v[1] / magnitude,
+        v[2] / magnitude,
     };
 }
+
+fn calcDotProd(comptime T: type, a: [3]T, b: [3]T) T {
+    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+}
+
 
 fn filterColor(color: Rgb, light: Rgb) Rgb {
     return .{
@@ -267,16 +286,16 @@ fn filterColor(color: Rgb, light: Rgb) Rgb {
     };
 }
 
-fn getReflectDir(dir: [3]Dist, normal: [3]f32) [3]Dist {
+fn getReflectDir(dir: [3]Dist, normal: [3]Dist) [3]Dist {
     const scale = 2 * (
-        floatFromDist(f32, dir[0]) * normal[0] +
-        floatFromDist(f32, dir[1]) * normal[1] +
-        floatFromDist(f32, dir[2]) * normal[2]
+        dir[0] * normal[0] +
+        dir[1] * normal[1] +
+        dir[2] * normal[2]
     );
     return .{
-        distCast(floatFromDist(f32, dir[0]) - scale * normal[0]),
-        distCast(floatFromDist(f32, dir[1]) - scale * normal[1]),
-        distCast(floatFromDist(f32, dir[2]) - scale * normal[2]),
+        dir[0] - scale * normal[0],
+        dir[1] - scale * normal[1],
+        dir[2] - scale * normal[2],
     };
 }
 
@@ -329,18 +348,18 @@ fn raycast(pos: [3]Dist, dir: [3]Dist, depth: u32, maybe_exclude: ?*Sphere) ?Rgb
                 //return null;
             }
 
-            const normal = calcNormal(f32, dir);
+            const dir_uv = calcUnitVector(Dist, dir);
             const new_pos: [3]Dist = .{
-                pos[0] + distCast(normal[0] * floatFromDist(f32, closest.dist)),
-                pos[1] + distCast(normal[1] * floatFromDist(f32, closest.dist)),
-                pos[2] + distCast(normal[2] * floatFromDist(f32, closest.dist)),
+                pos[0] + dir_uv[0] * closest.dist,
+                pos[1] + dir_uv[1] * closest.dist,
+                pos[2] + dir_uv[2] * closest.dist,
             };
-            const reflect_normal = calcNormal(f32, .{
+            const reflect_uv = calcUnitVector(Dist, .{
                 new_pos[0] - closest.sphere.center[0],
                 new_pos[1] - closest.sphere.center[1],
                 new_pos[2] - closest.sphere.center[2],
             });
-            const new_dir = getReflectDir(dir, reflect_normal);
+            const new_dir = getReflectDir(dir, reflect_uv);
             const light = raycast(new_pos, new_dir, depth + 1, closest.sphere) orelse return null;
             return filterColor(closest.sphere.rgb, light);
         }
@@ -403,7 +422,7 @@ pub fn onControlEvent(event: ControlEvent) void {
 
 fn enforceNoOverlap() void {
     for (&global.spheres, 0..) |*sphere, i| {
-        for (global.spheres[i + 1..]) |other_sphere| {
+        for (global.spheres[i + 1..], i+1..) |other_sphere, j| {
             const dist_vector = [3]Dist {
                 sphere.center[0] - other_sphere.center[0],
                 sphere.center[1] - other_sphere.center[1],
@@ -412,7 +431,7 @@ fn enforceNoOverlap() void {
             const dist = calcMagnitude3d(f64, dist_vector);
             const min_dist = floatFromDist(f64, sphere.radius + other_sphere.radius);
             if (dist < min_dist)
-                std.debug.panic("two spheres are overlapping!", .{});
+                std.debug.panic("spheres {} and {} are overlapping!", .{i, j});
         }
     }
 }
@@ -522,11 +541,34 @@ fn getPlayerMove() ?[3]f32 {
         else (if (global.user_input.left == .down) -1 else null);
     if (maybe_z == null and maybe_x == null)
         return null;
-    return calcNormal(f32, .{
+    return calcUnitVector(f32, .{
         maybe_x orelse 0,
         0,
         maybe_z orelse 0,
     });
+}
+
+// return a unit vector projected onto the given plane
+fn projectUnitVectorOntoPlane(
+    unit_vector: [3]Dist,
+    plane_normal: [3]Dist,
+) [3]f64 {
+    const dot_prod = calcDotProd(Dist, unit_vector, plane_normal);
+
+    // TODO: intead of calculating this we could require that plane_normal
+    //       be a unit vector
+    const normal_squared = calcDotProd(Dist, plane_normal, plane_normal);
+    const projected: [3]Dist = .{
+        plane_normal[0] * dot_prod / normal_squared,
+        plane_normal[1] * dot_prod / normal_squared,
+        plane_normal[2] * dot_prod / normal_squared,
+    };
+
+    return .{
+        unit_vector[0] - projected[0],
+        unit_vector[1] - projected[1],
+        unit_vector[2] - projected[2],
+    };
 }
 
 pub fn render(image: RenderImage, size: XY(usize)) void {
@@ -534,38 +576,69 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
     move();
 
     if (global.user_input.pitch_up == .down) {
-        global.camera.pitch -= 0.01;
+        global.camera.angles.pitch -= 0.02;
+        if (global.camera.angles.pitch < -std.math.pi/2.0) {
+            std.log.info("pitch clamped", .{});
+            global.camera.angles.pitch = -std.math.pi/2.0;
+        }
     }
     if (global.user_input.pitch_down == .down) {
-        global.camera.pitch += 0.01;
+        global.camera.angles.pitch += 0.02;
+        if (global.camera.angles.pitch > std.math.pi/2.0) {
+            std.log.info("pitch clamped", .{});
+            global.camera.angles.pitch = std.math.pi/2.0;
+        }
     }
     if (global.user_input.turn_left == .down) {
-        global.camera.yaw -= 0.01;
+        global.camera.angles.yaw -= 0.03;
+        if (global.camera.angles.yaw < 0)
+            global.camera.angles.yaw += std.math.pi*2.0;
     }
     if (global.user_input.turn_right == .down) {
-        global.camera.yaw += 0.01;
+        global.camera.angles.yaw += 0.03;
+        if (global.camera.angles.yaw >= std.math.pi*2.0)
+            global.camera.angles.yaw -= std.math.pi*2.0;
     }
-    const rotate_quat = zmath.quatFromRollPitchYaw(
-        global.camera.pitch,
-        global.camera.yaw,
-        0,
+    const camera_rotate_quat = zmath.quatFromRollPitchYaw(
+        global.camera.angles.pitch,
+        global.camera.angles.yaw,
+        global.camera.angles.roll,
     );
 
     if (getPlayerMove()) |player_move_unrotated| {
-        const player_move_normal = zmath.rotate(rotate_quat, @Vector(4, f32){
-            player_move_unrotated[0],
-            player_move_unrotated[1],
-            player_move_unrotated[2],
-            1,
-        });
+        const earth_normal = [3]Dist{
+            global.player_sphere.center[0] - global.earth_sphere.center[0],
+            global.player_sphere.center[1] - global.earth_sphere.center[1],
+            global.player_sphere.center[2] - global.earth_sphere.center[2],
+        };
+
+        const camera_dir_unit_vector = zmath.rotate(
+            camera_rotate_quat,
+            @Vector(4, f32){
+                player_move_unrotated[0],
+                player_move_unrotated[1],
+                player_move_unrotated[2],
+                1,
+            },
+        );
+        const camera_earth_tangent = calcUnitVector(Dist, projectUnitVectorOntoPlane(
+            [3]Dist{
+                camera_dir_unit_vector[0],
+                camera_dir_unit_vector[1],
+                camera_dir_unit_vector[2],
+            },
+            earth_normal,
+        ));
         const user_speed: f32 = std.math.pow(f32, 2, @floatFromInt(global.user_speed));
         const new_player_pos = [3]Dist{
-            global.player_sphere.center[0] + distCast(player_move_normal[0] * user_speed),
-            global.player_sphere.center[1] + distCast(player_move_normal[1] * user_speed),
-            global.player_sphere.center[2] + distCast(player_move_normal[2] * user_speed),
+            global.player_sphere.center[0] + camera_earth_tangent[0] * user_speed,
+            global.player_sphere.center[1] + camera_earth_tangent[1] * user_speed,
+            global.player_sphere.center[2] + camera_earth_tangent[2] * user_speed,
         };
         var move_has_collision = false;
-        for (global.spheres[1..]) |other_sphere| {
+        for (&global.spheres) |*other_sphere| {
+            // skip the first sphere since that's the player
+            if (other_sphere == global.player_sphere) continue;
             const dist_vector = [3]Dist {
                 new_player_pos[0] - other_sphere.center[0],
                 new_player_pos[1] - other_sphere.center[1],
@@ -592,7 +665,7 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
         .y = distDiv(distCast(size.y), 2),
     };
     const default_z_magnitude = (@abs(half_size.x) + @abs(half_size.y)) / 2;
-    const focal_mult = 10.0;
+    const focal_mult = 5.0;
     const z_dir: Dist = focal_mult * default_z_magnitude;
 
     // Put the camera at the top of our sphere
@@ -615,7 +688,7 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
                 pixel_pos.y - half_size.y,
                 distCast(z_dir),
             };
-            const new_direction_vec = zmath.rotate(rotate_quat, @Vector(4, f32){
+            const new_direction_vec = zmath.rotate(camera_rotate_quat, @Vector(4, f32){
                 floatFromDist(f32, direction[0]),
                 floatFromDist(f32, direction[1]),
                 floatFromDist(f32, direction[2]),
