@@ -1,0 +1,33 @@
+
+Camera:
+
+Roll/Pitch/Yaw  (Good for making a rotation quaternion)
+WASD movment should always be tangent to the earth.
+
+
+
+
+
+* Regardless of Pitch, WASD movement should always be tangent to the earth.
+
+
+Initial Camera Vector: 0, 0, 1
+
+User Input Camera Yaw: 0 - 2pi
+User Input Camera Pitch: -pi/2 to pi/2
+
+When player moves, we calculate the Movement Vector:
+Take the Camera Vector and modify the pitch (-pi/2 to pi/2)
+to bring it tangent with the earth.  Move relative
+to that vector based on direction (i.e. forward/left/etc)
+
+Do we update the camera vector?
+
+--------------------------------------------------------------------------------
+Scratch that, no camera vector.
+--------------------------------------------------------------------------------
+We have a Camera Pitch/Yaw.
+We have a normal vector (Position-EarthCenter).
+
+How do we calculate the movement vector?
+How do we calculate our ray vectors?

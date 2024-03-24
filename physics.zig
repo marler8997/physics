@@ -65,6 +65,11 @@ fn distDiv(num: Dist, denom: Dist) Dist {
 const Camera = struct {
     // camera is now attached to global.player_sphere
     //pos: [3]Dist,
+    angles: EulerAngles,
+};
+
+const EulerAngles = struct {
+    roll: f32,
     pitch: f32,
     yaw: f32,
 };
@@ -78,7 +83,10 @@ const Sphere = struct {
     is_light_source: bool,
 };
 
-const earth_radius = kilometers(6371);
+const little_earth = true;
+const little_earth_radius = kilometers(1);
+const little_earth_mass = kilograms(5.97219e18);
+const earth_radius = if (little_earth) little_earth_radius else kilometers(6371);
 
 const max_sphere_count = 20;
 const max_user_speed = 30;
@@ -97,9 +105,11 @@ const global = struct {
     }, .{
         // earth
         .center = .{  0, 0, 0 },
-        .radius = kilometers(6371),
+        .radius = earth_radius,
         .velocity = .{ 0, 0, 0 },
-        .mass = kilograms(5.97219e24),
+        .mass =
+            if (little_earth) little_earth_mass
+            else kilograms(5.97219e24),
         .rgb = .{ .r = 102, .g = 51, .b = 0 },
         .is_light_source = false,
     }, .{
@@ -120,9 +130,13 @@ const global = struct {
         .is_light_source = false,
     }};
     pub const player_sphere = &spheres[0];
+    pub const earth_sphere = &spheres[1];
     pub var camera = Camera{
-        .pitch = 0,
-        .yaw = 0,
+        .angles = .{
+            .roll = 0,
+            .pitch = 0,
+            .yaw = 0,
+        },
     };
     pub var user_input: struct {
         forward: ControlState = .up,
@@ -191,50 +205,50 @@ fn testIntersectsSphere(
     ));
 }
 
-test "line intersects sphere " {
-    try testIntersectsSphere(
-        .{9, 11},
-        .{0, 0, 0}, // pos
-        .{0, 0, 1}, // dir
-        .{0, 0, 10}, // center
-        1, // radius
-    );
-    try testIntersectsSphere(
-        .{0, 0},
-        .{0, 0, 0}, // pos
-        .{0, 1, 11}, // dir
-        .{0, 0, 10}, // center
-        1, // radius
-    );
-    try testIntersectsSphere(
-        .{0, 0},
-        .{0, 0, 0}, // pos
-        .{0, -1, 11}, // dir
-        .{0, 0, 10}, // center
-        1, // radius
-    );
-    try testIntersectsSphere(
-        .{0, 0},
-        .{0, 0, 0}, // pos
-        .{0, 1, -11}, // dir
-        .{0, 0, 10}, // center
-        1, // radius
-    );
-    try testIntersectsSphere(
-        .{-1, -1},
-        .{0, 0, 0}, // pos
-        .{0, 2, 11}, // dir
-        .{0, 0, 10}, // center
-        1, // radius
-    );
-    try testIntersectsSphere(
-        .{-1, -1},
-        .{0, 0, 0}, // pos
-        .{0, -2, 11}, // dir
-        .{0, 0, 10}, // center
-        1, // radius
-    );
-}
+//test "line intersects sphere " {
+//    try testIntersectsSphere(
+//        .{9, 11},
+//        .{0, 0, 0}, // pos
+//        .{0, 0, 1}, // dir
+//        .{0, 0, 10}, // center
+//        1, // radius
+//    );
+//    try testIntersectsSphere(
+//        .{0, 0},
+//        .{0, 0, 0}, // pos
+//        .{0, 1, 11}, // dir
+//        .{0, 0, 10}, // center
+//        1, // radius
+//    );
+//    try testIntersectsSphere(
+//        .{0, 0},
+//        .{0, 0, 0}, // pos
+//        .{0, -1, 11}, // dir
+//        .{0, 0, 10}, // center
+//        1, // radius
+//    );
+//    try testIntersectsSphere(
+//        .{0, 0},
+//        .{0, 0, 0}, // pos
+//        .{0, 1, -11}, // dir
+//        .{0, 0, 10}, // center
+//        1, // radius
+//    );
+//    try testIntersectsSphere(
+//        .{-1, -1},
+//        .{0, 0, 0}, // pos
+//        .{0, 2, 11}, // dir
+//        .{0, 0, 10}, // center
+//        1, // radius
+//    );
+//    try testIntersectsSphere(
+//        .{-1, -1},
+//        .{0, 0, 0}, // pos
+//        .{0, -2, 11}, // dir
+//        .{0, 0, 10}, // center
+//        1, // radius
+//    );
+//}
 
 fn calcMagnitude3d(comptime Float: type, v: [3]Dist) Float {
     return @sqrt(
@@ -250,6 +264,16 @@ fn calcDistance3d(comptime Float: type, a: [3]Dist, b: [3]Dist) Float {
     });
 }
 
+fn calcUnitVector(comptime T: type, v: [3]T) [3]T {
+    const magnitude = calcMagnitude3d(T, v);
+    return [3]T{
+        v[0] / magnitude,
+        v[1] / magnitude,
+        v[2] / magnitude,
+    };
+}
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// TODO: remove?
 fn calcNormal(comptime Float: type, v: [3]Dist) [3]Float {
     const magnitude = calcMagnitude3d(Float, v);
     return [3]Float{
@@ -403,7 +427,7 @@ pub fn onControlEvent(event: ControlEvent) void {
 
 fn enforceNoOverlap() void {
     for (&global.spheres, 0..) |*sphere, i| {
-        for (global.spheres[i + 1..]) |other_sphere| {
+        for (global.spheres[i + 1..], i+1..) |other_sphere, j| {
             const dist_vector = [3]Dist {
                 sphere.center[0] - other_sphere.center[0],
                 sphere.center[1] - other_sphere.center[1],
@@ -412,7 +436,7 @@ fn enforceNoOverlap() void {
             const dist = calcMagnitude3d(f64, dist_vector);
             const min_dist = floatFromDist(f64, sphere.radius + other_sphere.radius);
             if (dist < min_dist)
-                std.debug.panic("two spheres are overlapping!", .{});
+                std.debug.panic("spheres {} and {} are overlapping!", .{i, j});
         }
     }
 }
@@ -529,40 +553,293 @@ fn getPlayerMove() ?[3]f32 {
     });
 }
 
+const PitchYaw = struct {
+    pitch: f64,
+    yaw: f64,
+
+    pub fn initUpDiff(dir: [3]f64) PitchYaw {
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //std.io.getStdErr().writer().print("--- {d},{d},{d}\n", .{dir[0], dir[1], dir[2]}) catch unreachable;
+        const horz_box_vector = std.math.sqrt(
+            dir[0] * dir[0] + dir[2] * dir[2]
+        );
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //std.io.getStdErr().writer().print("    horz_box_vector={d}\n", .{horz_box_vector}) catch @panic("pf");
+        const pitch = std.math.atan2(horz_box_vector, dir[1]);
+        // we always rotate yaw if we're going in the -x direction
+        if (dir[0] < 0) {
+            return .{
+                .pitch = pitch,
+                .yaw = std.math.pi + std.math.atan2(-dir[0], -dir[2]),
+            };
+        }
+        return .{
+            .pitch = pitch,
+            .yaw = std.math.atan2(dir[0], dir[2]),
+        };
+    }
+    pub fn format(
+        self: PitchYaw,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("pitch {d} yaw {d}", .{self.pitch, self.yaw});
+    }
+};
+
+test "pitch yaw" {
+    // Test all 26 possible unit directions (3 * 3 * 3 minus 1 for 0,0,0)
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/2.0, .yaw = 0 },
+        PitchYaw.initUpDiff(.{0, 0, 1}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/2.0, .yaw = std.math.pi },
+        PitchYaw.initUpDiff(.{0, 0, -1}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = 0, .yaw = 0 },
+        PitchYaw.initUpDiff(.{0, 1, 0}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/4.0, .yaw = 0 },
+        PitchYaw.initUpDiff(.{0, 1, 1}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/4.0, .yaw = std.math.pi },
+        PitchYaw.initUpDiff(.{0, 1, -1}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi, .yaw = 0 },
+        PitchYaw.initUpDiff(.{0, -1, 0}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi*3.0/4.0, .yaw = 0 },
+        PitchYaw.initUpDiff(.{0, -1, 1}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi*3.0/4.0, .yaw = std.math.pi },
+        PitchYaw.initUpDiff(.{0, -1, -1}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/2.0, .yaw = std.math.pi/2.0 },
+        PitchYaw.initUpDiff(.{1, 0, 0}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/2.0, .yaw = std.math.pi/4.0 },
+        PitchYaw.initUpDiff(.{1, 0, 1}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/2.0, .yaw = std.math.pi*3.0/4.0 },
+        PitchYaw.initUpDiff(.{1, 0, -1}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/4.0, .yaw = std.math.pi/2.0 },
+        PitchYaw.initUpDiff(.{1, 1, 0}),
+    );
+    {
+        const actual = PitchYaw.initUpDiff(.{1, 1, 1});
+        try std.testing.expectApproxEqAbs(0.95532, actual.pitch, 0.00001);
+        try std.testing.expectEqual(std.math.pi/4.0, actual.yaw);
+    }
+    {
+        const actual = PitchYaw.initUpDiff(.{1, 1, -1});
+        try std.testing.expectApproxEqAbs(0.95532, actual.pitch, 0.00001);
+        try std.testing.expectEqual(std.math.pi*3.0/4.0, actual.yaw);
+    }
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi*3.0/4.0, .yaw = std.math.pi/2.0 },
+        PitchYaw.initUpDiff(.{1, -1, 0}),
+    );
+    {
+        const actual = PitchYaw.initUpDiff(.{1, -1, 1});
+        try std.testing.expectApproxEqAbs(2.18628, actual.pitch, 0.00001);
+        try std.testing.expectEqual(std.math.pi/4.0, actual.yaw);
+    }
+    {
+        const actual = PitchYaw.initUpDiff(.{1, -1, -1});
+        try std.testing.expectApproxEqAbs(2.18628, actual.pitch, 0.00001);
+        try std.testing.expectEqual(std.math.pi*3.0/4.0, actual.yaw);
+    }
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/2.0, .yaw = std.math.pi*6.0/4.0 },
+        PitchYaw.initUpDiff(.{-1, 0, 0}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/2.0, .yaw = std.math.pi*7.0/4.0 },
+        PitchYaw.initUpDiff(.{-1, 0, 1}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/2.0, .yaw = std.math.pi*5.0/4.0 },
+        PitchYaw.initUpDiff(.{-1, 0, -1}),
+    );
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi/4.0, .yaw = std.math.pi*6.0/4.0 },
+        PitchYaw.initUpDiff(.{-1, 1, 0}),
+    );
+    {
+        const actual = PitchYaw.initUpDiff(.{-1, 1, 1});
+        try std.testing.expectApproxEqAbs(0.95532, actual.pitch, 0.00001);
+        try std.testing.expectEqual(std.math.pi*7.0/4.0, actual.yaw);
+    }
+    {
+        const actual = PitchYaw.initUpDiff(.{-1, 1, -1});
+        try std.testing.expectApproxEqAbs(0.95532, actual.pitch, 0.00001);
+        try std.testing.expectEqual(std.math.pi*5.0/4.0, actual.yaw);
+    }
+    try std.testing.expectEqual(
+        PitchYaw{ .pitch = std.math.pi*3.0/4.0, .yaw = std.math.pi*3.0/2.0 },
+        PitchYaw.initUpDiff(.{-1, -1, 0}),
+    );
+    {
+        const actual = PitchYaw.initUpDiff(.{-1, -1, 1});
+        try std.testing.expectApproxEqAbs(2.18628, actual.pitch, 0.00001);
+        try std.testing.expectEqual(std.math.pi*7.0/4.0, actual.yaw);
+    }
+    {
+        const actual = PitchYaw.initUpDiff(.{-1, -1, -1});
+        try std.testing.expectApproxEqAbs(2.18628, actual.pitch, 0.00001);
+        try std.testing.expectEqual(std.math.pi*5.0/4.0, actual.yaw);
+    }
+}
+
+fn calcDotProd(comptime T: type, a: [3]T, b[3]T) [3]T {
+    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+}
+
+// return a unit vector projected onto the given plane
+fn projectUnitVectorOntoPlane(
+    unit_vector: [3]Dist,
+    plane_normal: [3]Dist,
+} [3]f64 {
+    const dot_prod = calcDotProd(Dist, unit_vector, plane_normal);
+
+    const normal_squared = calcDotProd(Dist, plane_normal, plane_normal);
+
+
+    // Calculate the dot product of unit_vector and plane_normal
+    const dot = dotProduct(unit_vector, plane_normal);
+
+    // Calculate the magnitude squared of plane_normal
+    const normSq = dotProduct(plane_normal, plane_normal);
+
+    // Calculate the projection of unit_vector onto plane_normal
+    const projOnNormal = scaleVector(plane_normal, dot / normSq);
+
+    // Subtract the projection from unit_vector to get the projection onto the plane
+    return subtractVectors(unit_vector, projOnNormal);
+}
+
+var global_last_pitch_yaw: ?PitchYaw = null;
+
 pub fn render(image: RenderImage, size: XY(usize)) void {
     applyGravity();
     move();
 
+//    // rotate the camera based on where player is relative
+//    // to the center of the earth
+//    const earth_pitch_yaw = PitchYaw.initUpDiff(.{
+//        global.player_sphere.center[0] - global.earth_sphere.center[0],
+//        global.player_sphere.center[1] - global.earth_sphere.center[1],
+//        global.player_sphere.center[2] - global.earth_sphere.center[2],
+//    });
+//
+//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//    if (global_last_pitch_yaw == null or global_last_pitch_yaw.?.pitch != earth_pitch_yaw.pitch or global_last_pitch_yaw.?.yaw != earth_pitch_yaw.yaw) {
+//        global_last_pitch_yaw = earth_pitch_yaw;
+//        std.log.info(
+//            "earth yaw {d} pitch {d}",
+//            .{earth_pitch_yaw.yaw, earth_pitch_yaw.pitch},
+//        );
+//    }
+//    const earth_rotate_quat = zmath.quatFromRollPitchYaw(
+//        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//        0, //floatFromDist(f32, earth_pitch_yaw.pitch),
+//        0, //floatFromDist(f32, earth_pitch_yaw.yaw),
+//        0,
+//    );
+
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // TODO:
+    // we'll need to adjust our pitch/turn controls based on the
+    // earth normal vector
+
     if (global.user_input.pitch_up == .down) {
-        global.camera.pitch -= 0.01;
+        global.camera.angles.pitch -= 0.01;
+        if (global.camera.angles.pitch < -std.math.pi/2.0) {
+            std.log.info("pitch clamped", .{});
+            global.camera.angles.pitch = -std.math.pi/2.0;
+        }
     }
     if (global.user_input.pitch_down == .down) {
-        global.camera.pitch += 0.01;
+        global.camera.angles.pitch += 0.01;
+        if (global.camera.angles.pitch > std.math.pi/2.0) {
+            std.log.info("pitch clamped", .{});
+            global.camera.angles.pitch = std.math.pi/2.0;
+        }
     }
     if (global.user_input.turn_left == .down) {
-        global.camera.yaw -= 0.01;
+        global.camera.angles.yaw -= 0.03;
+        if (global.camera.angles.yaw < 0)
+            global.camera.angles.yaw += std.math.pi*2.0;
     }
     if (global.user_input.turn_right == .down) {
-        global.camera.yaw += 0.01;
+        global.camera.angles.yaw += 0.03;
+        if (global.camera.angles.yaw >= std.math.pi*2.0)
+            global.camera.angles.yaw -= std.math.pi*2.0;
     }
-    const rotate_quat = zmath.quatFromRollPitchYaw(
-        global.camera.pitch,
-        global.camera.yaw,
-        0,
+    const camera_rotate_quat = zmath.quatFromRollPitchYaw(
+        global.camera.angles.pitch,
+        global.camera.angles.yaw,
+        global.camera.angles.roll,
     );
 
     if (getPlayerMove()) |player_move_unrotated| {
-        const player_move_normal = zmath.rotate(rotate_quat, @Vector(4, f32){
-            player_move_unrotated[0],
-            player_move_unrotated[1],
-            player_move_unrotated[2],
-            1,
-        });
+        // Take the vector 0, 0, 1, rotate it by the
+        // camera rotation to get a unit vector.
+        // Then, get the projection of this vector
+        // onto the plane defined by the earth normal vector.
+        // This is the movement vector.
+
+
+        const earth_normal = [3]Dist{
+            global.player_sphere.center[0] - global.earth_sphere.center[0],
+            global.player_sphere.center[1] - global.earth_sphere.center[1],
+            global.player_sphere.center[2] - global.earth_sphere.center[2],
+        };
+        _ = earth_normal;
+
+        //const movement_unit_vector = [3]f64 {?};
+
+
+        // !!!
+        //const player_earth_normal =
+
+        // TODO: move the player tangent to the earth
+        // Move the player tangent to the earth
+//        const player_move_1 = zmath.rotate(camera_rotate_quat, @Vector(4, f32){
+//            player_move_unrotated[0],
+//            player_move_unrotated[1],
+//            player_move_unrotated[2],
+//            1,
+//        });
+//        const player_move_normal = zmath.rotate(earth_rotate_quat, @Vector(4, f32){
+//            player_move_1[0],
+//            player_move_1[1],
+//            player_move_1[2],
+//            1,
+        //        });
+        _ = player_move_unrotated;
         const user_speed: f32 = std.math.pow(f32, 2, @floatFromInt(global.user_speed));
+        _ = user_speed;
         const new_player_pos = [3]Dist{
-            global.player_sphere.center[0] + distCast(player_move_normal[0] * user_speed),
-            global.player_sphere.center[1] + distCast(player_move_normal[1] * user_speed),
-            global.player_sphere.center[2] + distCast(player_move_normal[2] * user_speed),
+            global.player_sphere.center[0],// + distCast(player_move_normal[0] * user_speed),
+            global.player_sphere.center[1],// + distCast(player_move_normal[1] * user_speed),
+            global.player_sphere.center[2],// + distCast(player_move_normal[2] * user_speed),
         };
         var move_has_collision = false;
         for (global.spheres[1..]) |other_sphere| {
@@ -592,7 +869,9 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
         .y = distDiv(distCast(size.y), 2),
     };
     const default_z_magnitude = (@abs(half_size.x) + @abs(half_size.y)) / 2;
-    const focal_mult = 10.0;
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //const focal_mult = 10.0;
+    const focal_mult = 5.0;
     const z_dir: Dist = focal_mult * default_z_magnitude;
 
     // Put the camera at the top of our sphere
@@ -615,7 +894,7 @@ pub fn render(image: RenderImage, size: XY(usize)) void {
                 pixel_pos.y - half_size.y,
                 distCast(z_dir),
             };
-            const new_direction_vec = zmath.rotate(rotate_quat, @Vector(4, f32){
+            const new_direction_vec = zmath.rotate(camera_rotate_quat, @Vector(4, f32){
                 floatFromDist(f32, direction[0]),
                 floatFromDist(f32, direction[1]),
                 floatFromDist(f32, direction[2]),
