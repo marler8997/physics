@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
         .windows => "win32.zig",
         else => {
             std.log.err("unsupported target os {s}", .{@tagName(target.result.os.tag)});
-            std.os.exit(0xff);
+            std.process.exit(0xff);
         },
     };
     const exe = b.addExecutable(.{
